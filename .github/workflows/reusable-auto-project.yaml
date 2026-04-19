@@ -7,6 +7,11 @@ on:
         description: 'GitHub Projects board number (org-level)'
         required: true
         type: number
+      type-mapping:
+        description: 'JSON mapping of label names to project Type field values'
+        required: false
+        type: string
+        default: ''
     secrets:
       token:
         description: 'PAT or GitHub App token with project scope'
@@ -60,6 +65,108 @@ jobs:
               }
             `, { projectId: project.id, contentId: issue.node_id });
 
+            const itemId = mutation.addProjectV2ItemById.item.id;
             core.info(`Added issue #${issue.number} to project "${project.title}"`);
-            core.summary.addRaw(`✓ Added issue #${issue.number} to project "${project.title}" (#${projectNumber})`);
+            core.summary.addRaw(`✓ Added issue #${issue.number} to project "${project.title}" (#${projectNumber})\n`);
+
+            // Set Type field if mapping is provided
+            const typeMappingRaw = `${{ inputs.type-mapping }}`;
+            if (!typeMappingRaw) {
+              await core.summary.write();
+              return;
+            }
+
+            let typeMapping;
+            try {
+              typeMapping = JSON.parse(typeMappingRaw);
+            } catch (e) {
+              core.warning(`Invalid type-mapping JSON: ${e.message} — skipping type assignment`);
+              await core.summary.write();
+              return;
+            }
+
+            // Find matching label
+            const issueLabels = issue.labels.map(l => l.name);
+            let targetType = null;
+            let matchedLabel = null;
+
+            for (const [label, typeName] of Object.entries(typeMapping)) {
+              if (issueLabels.includes(label)) {
+                targetType = typeName;
+                matchedLabel = label;
+                break;
+              }
+            }
+
+            if (!targetType) {
+              core.info('No labels matched type-mapping — skipping type assignment');
+              core.summary.addRaw('No labels matched type-mapping — Type not set\n');
+              await core.summary.write();
+              return;
+            }
+
+            // Get the Type field and its options from the project
+            const fieldsQuery = await github.graphql(`
+              query($projectId: ID!) {
+                node(id: $projectId) {
+                  ... on ProjectV2 {
+                    fields(first: 50) {
+                      nodes {
+                        ... on ProjectV2SingleSelectField {
+                          id
+                          name
+                          options {
+                            id
+                            name
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            `, { projectId: project.id });
+
+            const typeField = fieldsQuery.node.fields.nodes.find(
+              f => f.name && f.name.toLowerCase() === 'type'
+            );
+
+            if (!typeField) {
+              core.warning('No "Type" field found on the project — skipping type assignment');
+              core.summary.addRaw('⚠ No "Type" field found on the project\n');
+              await core.summary.write();
+              return;
+            }
+
+            const targetOption = typeField.options.find(o => o.name === targetType);
+            if (!targetOption) {
+              core.warning(`Type option "${targetType}" not found on the project — available: ${typeField.options.map(o => o.name).join(', ')}`);
+              core.summary.addRaw(`⚠ Type option "${targetType}" not found — available: ${typeField.options.map(o => o.name).join(', ')}\n`);
+              await core.summary.write();
+              return;
+            }
+
+            // Set the Type field value
+            await github.graphql(`
+              mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
+                updateProjectV2ItemFieldValue(input: {
+                  projectId: $projectId
+                  itemId: $itemId
+                  fieldId: $fieldId
+                  value: { singleSelectOptionId: $optionId }
+                }) {
+                  projectV2Item {
+                    id
+                  }
+                }
+              }
+            `, {
+              projectId: project.id,
+              itemId,
+              fieldId: typeField.id,
+              optionId: targetOption.id,
+            });
+
+            core.info(`Set Type to "${targetType}" (matched label "${matchedLabel}")`);
+            core.summary.addRaw(`✓ Set Type to "${targetType}" (matched label \`${matchedLabel}\`)\n`);
             await core.summary.write();
