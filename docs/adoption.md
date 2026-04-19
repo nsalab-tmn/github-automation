@@ -33,7 +33,7 @@ on:
   issues:
     types: [opened]
   pull_request:
-    types: [opened, synchronize]
+    types: [opened, synchronize, edited, labeled, unlabeled]
 
 jobs:
   auto-assign:
@@ -60,6 +60,14 @@ jobs:
           "ci-cd": [".github/**"],
           "documentation": ["docs/**", "*.md"]
         }
+
+  pr-validate:
+    if: github.event_name == 'pull_request'
+    uses: nsalab-tmn/github-automation/.github/workflows/reusable-pr-validate.yaml@main
+    with:
+      require-issue: true
+      require-labels: true
+      require-description: true
 ```
 
 ### 2. Configure secrets
@@ -85,6 +93,7 @@ For `reusable-auto-project`:
 | `reusable-auto-assign` | Assigns issues/PRs to creator or default assignee | `default-assignee` (optional) | — |
 | `reusable-auto-project` | Adds issues to a GitHub Projects board | `project-number` (required) | `token` (required) |
 | `reusable-auto-label` | Labels PRs based on changed file paths | `label-config` (required, JSON) | — |
+| `reusable-pr-validate` | Validates PR has linked issue, description, labels | `require-issue`, `require-labels`, `require-description` (all optional, default `true`) | — |
 
 ## Customization
 
@@ -97,6 +106,9 @@ Each job in the caller is independent — include only what you need. The caller
 - `default-assignee`: GitHub username to fall back to if the issue/PR creator can't be assigned (e.g., not a collaborator). Omit to skip fallback.
 - `project-number`: find this in your project board URL — `https://github.com/orgs/nsalab-tmn/projects/N` → use `N`.
 - `label-config`: JSON mapping of label names to arrays of glob patterns. Labels are applied additively (never removed). Example: `{"ci-cd": [".github/**"], "documentation": ["docs/**", "*.md"]}`.
+- `require-issue`: require `Closes #N` / `Fixes #N` in the PR body. Default `true`.
+- `require-labels`: require at least one label. Default `true`.
+- `require-description`: require non-empty PR body. Default `true`.
 
 ## Updating
 

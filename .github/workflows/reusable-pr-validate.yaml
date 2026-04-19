@@ -1,0 +1,133 @@
+name: Validate PR structure
+
+on:
+  workflow_call:
+    inputs:
+      require-issue:
+        description: 'Require a linked issue (Closes #N or Fixes #N)'
+        required: false
+        type: boolean
+        default: true
+      require-labels:
+        description: 'Require at least one label'
+        required: false
+        type: boolean
+        default: true
+      require-description:
+        description: 'Require non-empty PR body'
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  pull-requests: write
+  statuses: write
+
+jobs:
+  pr-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+
+            if (!pr) {
+              core.warning('No pull request found in event payload — skipping');
+              return;
+            }
+
+            const marker = '<!-- pr-validation-bot -->';
+            const checks = [];
+
+            // Check description
+            if (${{ inputs.require-description }}) {
+              const body = (pr.body || '').trim();
+              const hasDescription = body.length > 0;
+              checks.push({
+                name: 'Description provided',
+                passed: hasDescription,
+                hint: 'Add a summary of your changes to the PR body',
+              });
+            }
+
+            // Check linked issue
+            if (${{ inputs.require-issue }}) {
+              const body = (pr.body || '');
+              const issuePattern = /(?:closes|fixes|resolves)\s+#\d+/i;
+              const hasIssue = issuePattern.test(body);
+              checks.push({
+                name: 'Linked issue',
+                passed: hasIssue,
+                hint: 'Use `Closes #N` in the description',
+              });
+            }
+
+            // Check labels
+            if (${{ inputs.require-labels }}) {
+              const hasLabels = pr.labels && pr.labels.length > 0;
+              checks.push({
+                name: 'Labels applied',
+                passed: hasLabels,
+                hint: 'Add at least one label to the PR',
+              });
+            }
+
+            const allPassed = checks.every(c => c.passed);
+
+            // Build comment body
+            const lines = checks.map(c => {
+              const icon = c.passed ? '[x]' : '[ ]';
+              const hint = c.passed ? '' : ` (${c.hint})`;
+              return `- ${icon} ${c.name}${hint}`;
+            });
+
+            const commentBody = allPassed
+              ? `${marker}\n### PR Validation\n\nAll checks passed.\n\n${lines.join('\n')}`
+              : `${marker}\n### PR Validation\n\nSome checks need attention:\n\n${lines.join('\n')}`;
+
+            // Find existing bot comment
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr.number,
+            });
+
+            const existing = comments.find(c => c.body && c.body.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body: commentBody,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                body: commentBody,
+              });
+            }
+
+            // Set commit status
+            const state = allPassed ? 'success' : 'failure';
+            const description = allPassed ? 'All checks passed' : `${checks.filter(c => !c.passed).length} check(s) need attention`;
+
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: pr.head.sha,
+              state,
+              description,
+              context: 'PR Validation',
+            });
+
+            if (!allPassed) {
+              core.setFailed(description);
+            }
+
+            core.summary.addRaw(`### PR Validation\n\n${lines.join('\n')}`);
+            await core.summary.write();
