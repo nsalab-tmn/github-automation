@@ -138,7 +138,12 @@ Each job in the caller is independent — include only what you need. The caller
 - `default-assignee`: GitHub username to fall back to if the issue/PR creator can't be assigned (e.g., not a collaborator). Omit to skip fallback.
 - `project-number`: find this in your project board URL — `https://github.com/orgs/nsalab-tmn/projects/N` → use `N`.
 - `type-mapping`: JSON mapping of issue label names to project Type field option names. First matching label wins. Example: `{"bug": "Bug", "enhancement": "Feature"}`. Omit to skip type assignment.
-- `label-config`: JSON mapping of label names to arrays of glob patterns. Labels are applied additively (never removed). Example: `{"ci-cd": [".github/**"], "documentation": ["docs/**", "*.md"]}`.
+- `label-config`: JSON mapping of label names to arrays of glob patterns. Labels are applied additively (never removed). **Important:** if using `require-labels: true` in pr-validate, every PR must match at least one pattern — ensure your config covers all directories in the repo. Common patterns:
+  - `"ci-cd": [".github/**"]`
+  - `"documentation": ["docs/**", "*.md"]`
+  - `"configuration": ["ansible/**"]`
+  - `"infrastructure": ["terraform/**"]`
+  - `"dashboards": ["dashboards/**"]`
 - `require-issue`: require `Closes #N` / `Fixes #N` in the PR body. Default `true`.
 - `require-labels`: require at least one label. Default `true`.
 - `require-description`: require non-empty PR body. Default `true`.
