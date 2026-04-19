@@ -39,12 +39,7 @@ Examples: `reusable-auto-assign.yaml`, `reusable-auto-project.yaml`, `reusable-s
 | `reusable-auto-project` | `issues` | `project-number` | Adds issue to a GitHub Projects board |
 | `reusable-auto-label` | `pull_request` | `label-config` (JSON) | Labels PRs based on changed file paths |
 | `reusable-pr-validate` | `pull_request` | `require-issue`, `require-labels`, `require-description` | Validates PR has linked issue, description, labels |
-
-### Planned workflows
-
-| Workflow | Trigger | Inputs | What it does |
-|----------|---------|--------|-------------|
-| `reusable-stale-check` | `schedule` | `days-before-stale`, `exempt-labels` | Labels inactive issues as stale |
+| `reusable-stale-check` | `schedule` | `days-before-stale`, `days-before-close`, `stale-label`, `exempt-labels`, `exempt-assignees` | Labels inactive issues as stale, optionally closes them |
 
 ### Caller workflow pattern
 
