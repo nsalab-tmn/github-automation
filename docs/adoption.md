@@ -67,6 +67,7 @@ jobs:
         }
 
   pr-validate:
+    needs: auto-label  # must run after auto-label so labels are present for validation
     if: github.event_name == 'pull_request'
     uses: nsalab-tmn/github-automation/.github/workflows/reusable-pr-validate.yaml@main
     with:
@@ -74,6 +75,8 @@ jobs:
       require-labels: true
       require-description: true
 ```
+
+> **Important:** If using both `auto-label` and `pr-validate`, add `needs: auto-label` to `pr-validate`. Without this, the jobs race and validation may fail because labels haven't been applied yet.
 
 ### Stale check (separate caller)
 
