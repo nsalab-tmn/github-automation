@@ -1,0 +1,153 @@
+name: Stale issue check
+
+on:
+  workflow_call:
+    inputs:
+      days-before-stale:
+        description: 'Days of inactivity before labeling stale'
+        required: false
+        type: number
+        default: 30
+      days-before-close:
+        description: 'Days after stale label before closing (0 = never close)'
+        required: false
+        type: number
+        default: 0
+      stale-label:
+        description: 'Label to apply to stale issues'
+        required: false
+        type: string
+        default: stale
+      exempt-labels:
+        description: 'Comma-separated labels that exempt an issue from stale checks'
+        required: false
+        type: string
+        default: pinned
+      exempt-assignees:
+        description: 'Comma-separated assignees whose issues are exempt'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  issues: write
+
+jobs:
+  stale-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Process stale issues
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const daysBeforeStale = ${{ inputs.days-before-stale }};
+            const daysBeforeClose = ${{ inputs.days-before-close }};
+            const staleLabel = '${{ inputs.stale-label }}';
+            const exemptLabels = '${{ inputs.exempt-labels }}'.split(',').map(l => l.trim()).filter(Boolean);
+            const exemptAssignees = '${{ inputs.exempt-assignees }}'.split(',').map(a => a.trim()).filter(Boolean);
+
+            const now = new Date();
+            const staleThreshold = new Date(now - daysBeforeStale * 24 * 60 * 60 * 1000);
+
+            let labeled = 0;
+            let closed = 0;
+            let unstaled = 0;
+
+            const issues = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+            });
+
+            for (const issue of issues) {
+              if (issue.pull_request) continue;
+
+              const issueLabels = issue.labels.map(l => l.name);
+              const issueAssignees = issue.assignees.map(a => a.login);
+
+              // Check exemptions
+              if (exemptLabels.some(l => issueLabels.includes(l))) continue;
+              if (exemptAssignees.some(a => issueAssignees.includes(a))) continue;
+
+              const isStale = issueLabels.includes(staleLabel);
+              const lastActivity = new Date(issue.updated_at);
+
+              if (isStale) {
+                // Check for new activity since stale label was applied
+                if (lastActivity > staleThreshold) {
+                  // Has new activity — remove stale label
+                  await github.rest.issues.removeLabel({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: issue.number,
+                    name: staleLabel,
+                  });
+                  core.info(`Un-staled #${issue.number} — new activity detected`);
+                  unstaled++;
+                  continue;
+                }
+
+                // Check if should close
+                if (daysBeforeClose > 0) {
+                  // Find when stale label was added
+                  const events = await github.paginate(github.rest.issues.listEvents, {
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: issue.number,
+                  });
+
+                  const staleLabelEvent = events
+                    .filter(e => e.event === 'labeled' && e.label && e.label.name === staleLabel)
+                    .pop();
+
+                  if (staleLabelEvent) {
+                    const staledAt = new Date(staleLabelEvent.created_at);
+                    const closeThreshold = new Date(staledAt.getTime() + daysBeforeClose * 24 * 60 * 60 * 1000);
+
+                    if (now > closeThreshold) {
+                      await github.rest.issues.createComment({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        issue_number: issue.number,
+                        body: `This issue has been closed because it remained stale for ${daysBeforeClose} days after being labeled.\nFeel free to reopen if this is still relevant.`,
+                      });
+                      await github.rest.issues.update({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        issue_number: issue.number,
+                        state: 'closed',
+                        state_reason: 'not_planned',
+                      });
+                      core.info(`Closed stale #${issue.number}`);
+                      closed++;
+                    }
+                  }
+                }
+              } else if (lastActivity < staleThreshold) {
+                // Mark as stale
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  labels: [staleLabel],
+                });
+
+                const closeNotice = daysBeforeClose > 0
+                  ? `\nIt will be closed in ${daysBeforeClose} days if no further activity occurs.`
+                  : '';
+
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  body: `This issue has been automatically labeled as stale because it has had no activity for ${daysBeforeStale} days.${closeNotice}\nRemove the \`${staleLabel}\` label or comment to keep it open.`,
+                });
+                core.info(`Labeled #${issue.number} as stale`);
+                labeled++;
+              }
+            }
+
+            const summary = `Stale check complete: ${labeled} labeled, ${closed} closed, ${unstaled} un-staled`;
+            core.info(summary);
+            core.summary.addRaw(summary);
+            await core.summary.write();

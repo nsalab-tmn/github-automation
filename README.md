@@ -46,6 +46,6 @@ github-automation/
 | `reusable-auto-project` | Add issues to GitHub Projects board | Active |
 | `reusable-auto-label` | Label PRs by changed file paths | Active |
 | `reusable-pr-validate` | Validate PR structure and linked issue | Active |
-| `reusable-stale-check` | Label and manage inactive issues | Planned |
+| `reusable-stale-check` | Label and manage inactive issues | Active |
 
 See [docs/conventions.md](docs/conventions.md) for the full catalog with inputs/outputs documentation.

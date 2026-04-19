@@ -70,6 +70,29 @@ jobs:
       require-description: true
 ```
 
+### Stale check (separate caller)
+
+Stale check runs on a schedule, so it needs its own workflow file:
+
+```yaml
+# .github/workflows/stale-check.yaml
+name: stale-check
+run-name: "[${{github.run_number}}] Stale check [${{github.event_name}}]"
+
+on:
+  schedule:
+    - cron: '0 9 * * 1'  # Monday 9am UTC
+  workflow_dispatch:
+
+jobs:
+  stale-check:
+    uses: nsalab-tmn/github-automation/.github/workflows/reusable-stale-check.yaml@main
+    with:
+      days-before-stale: 30
+      days-before-close: 14
+      exempt-labels: pinned,in-progress
+```
+
 ### 2. Configure secrets
 
 For `reusable-auto-project`:
@@ -94,6 +117,7 @@ For `reusable-auto-project`:
 | `reusable-auto-project` | Adds issues to a GitHub Projects board | `project-number` (required) | `token` (required) |
 | `reusable-auto-label` | Labels PRs based on changed file paths | `label-config` (required, JSON) | — |
 | `reusable-pr-validate` | Validates PR has linked issue, description, labels | `require-issue`, `require-labels`, `require-description` (all optional, default `true`) | — |
+| `reusable-stale-check` | Labels inactive issues as stale, optionally closes them | `days-before-stale`, `days-before-close`, `stale-label`, `exempt-labels`, `exempt-assignees` (all optional) | — |
 
 ## Customization
 
@@ -109,6 +133,11 @@ Each job in the caller is independent — include only what you need. The caller
 - `require-issue`: require `Closes #N` / `Fixes #N` in the PR body. Default `true`.
 - `require-labels`: require at least one label. Default `true`.
 - `require-description`: require non-empty PR body. Default `true`.
+- `days-before-stale`: days of inactivity before labeling stale. Default `30`.
+- `days-before-close`: days after stale label before closing (0 = never close). Default `0`.
+- `stale-label`: label name to apply. Default `stale`.
+- `exempt-labels`: comma-separated labels that exempt issues. Default `pinned`.
+- `exempt-assignees`: comma-separated assignees whose issues are exempt. Default empty.
 
 ## Updating
 
