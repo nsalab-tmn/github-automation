@@ -5,9 +5,57 @@ on:
     types: [opened]
   pull_request:
     types: [opened]
+  workflow_dispatch:
 
 jobs:
   auto-assign:
+    if: github.event_name != 'workflow_dispatch'
     uses: nsalab-tmn/github-automation/.github/workflows/reusable-auto-assign.yml@main
     with:
       default-assignee: menus12
+
+  bulk-assign:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Assign all unassigned open issues
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const defaultAssignee = 'menus12';
+            const issues = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+            });
+
+            let assigned = 0;
+            for (const issue of issues) {
+              if (issue.pull_request) continue;
+              if (issue.assignees && issue.assignees.length > 0) continue;
+
+              const assignee = issue.user.login || defaultAssignee;
+              try {
+                await github.rest.issues.addAssignees({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  assignees: [assignee],
+                });
+                core.info(`Assigned #${issue.number} to @${assignee}`);
+                assigned++;
+              } catch {
+                await github.rest.issues.addAssignees({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  assignees: [defaultAssignee],
+                });
+                core.info(`Assigned #${issue.number} to default @${defaultAssignee}`);
+                assigned++;
+              }
+            }
+            core.summary.addRaw(`✓ Assigned ${assigned} issue(s)`);
+            await core.summary.write();
