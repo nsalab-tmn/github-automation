@@ -35,12 +35,12 @@ Examples: `reusable-auto-assign.yaml`, `reusable-auto-project.yaml`, `reusable-s
 | Workflow | Trigger | Inputs | What it does |
 |----------|---------|--------|-------------|
 | `reusable-auto-assign` | `issues`, `pull_request` | `default-assignee` | Assigns creator or default assignee if none set |
+| `reusable-auto-project` | `issues` | `project-number` | Adds issue to a GitHub Projects board |
 
 ### Planned workflows
 
 | Workflow | Trigger | Inputs | What it does |
 |----------|---------|--------|-------------|
-| `reusable-auto-project` | `issues`, `pull_request` | `project-number` | Adds item to a GitHub Projects board |
 | `reusable-auto-label` | `pull_request` | `label-config` (JSON) | Labels PRs based on changed file paths |
 | `reusable-pr-validate` | `pull_request` | `require-issue`, `require-labels` | Validates PR has linked issue, description, labels |
 | `reusable-stale-check` | `schedule` | `days-before-stale`, `exempt-labels` | Labels inactive issues as stale |

@@ -15,6 +15,14 @@ jobs:
     with:
       default-assignee: menus12
 
+  auto-project:
+    if: github.event_name == 'issues'
+    uses: nsalab-tmn/github-automation/.github/workflows/reusable-auto-project.yaml@main
+    with:
+      project-number: 3
+    secrets:
+      token: ${{ secrets.PROJECT_TOKEN }}
+
   bulk-assign:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest

@@ -66,7 +66,7 @@ github-automation/
 | Workflow | Purpose | Status |
 |----------|---------|--------|
 | `reusable-auto-assign` | Auto-assign issues and PRs to creator or default assignee | Active |
-| `reusable-auto-project` | Add items to GitHub Projects board | Planned |
+| `reusable-auto-project` | Add issues to GitHub Projects board | Active |
 | `reusable-auto-label` | Label PRs by changed file paths | Planned |
 | `reusable-pr-validate` | Validate PR structure and linked issue | Planned |
 | `reusable-stale-check` | Label and manage inactive issues | Planned |
