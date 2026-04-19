@@ -1,0 +1,92 @@
+name: Auto-label PRs by changed paths
+
+on:
+  workflow_call:
+    inputs:
+      label-config:
+        description: 'JSON mapping of labels to glob patterns'
+        required: true
+        type: string
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  auto-label:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Label PR by changed files
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+
+            if (!pr) {
+              core.warning('No pull request found in event payload — skipping');
+              return;
+            }
+
+            // Parse label config
+            let config;
+            try {
+              config = JSON.parse(`${{ inputs.label-config }}`);
+            } catch (e) {
+              core.setFailed(`Invalid label-config JSON: ${e.message}`);
+              return;
+            }
+
+            // Get changed files
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number,
+            });
+
+            const changedPaths = files.map(f => f.filename);
+
+            // Match files against glob patterns
+            function matchGlob(pattern, path) {
+              const regexStr = pattern
+                .replace(/\./g, '\\.')
+                .replace(/\*\*/g, '{{GLOBSTAR}}')
+                .replace(/\*/g, '[^/]*')
+                .replace(/\{\{GLOBSTAR\}\}/g, '.*')
+                .replace(/\?/g, '[^/]');
+              return new RegExp(`^${regexStr}$`).test(path);
+            }
+
+            const labelsToAdd = new Set();
+            const matches = [];
+
+            for (const [label, patterns] of Object.entries(config)) {
+              for (const pattern of patterns) {
+                for (const filePath of changedPaths) {
+                  if (matchGlob(pattern, filePath)) {
+                    labelsToAdd.add(label);
+                    matches.push({ label, pattern, file: filePath });
+                    break;
+                  }
+                }
+              }
+            }
+
+            if (labelsToAdd.size === 0) {
+              core.info('No labels matched changed files');
+              core.summary.addRaw('No labels matched changed files');
+              await core.summary.write();
+              return;
+            }
+
+            // Apply labels (additive)
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr.number,
+              labels: [...labelsToAdd],
+            });
+
+            const summary = matches.map(m => `- **${m.label}** ← \`${m.pattern}\` matched \`${m.file}\``).join('\n');
+            core.info(`Applied labels: ${[...labelsToAdd].join(', ')}`);
+            core.summary.addRaw(`### Auto-label results\n\n${summary}`);
+            await core.summary.write();
