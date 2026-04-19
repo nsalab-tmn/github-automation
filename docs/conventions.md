@@ -36,7 +36,7 @@ Examples: `reusable-auto-assign.yaml`, `reusable-auto-project.yaml`, `reusable-s
 | Workflow | Trigger | Inputs | What it does |
 |----------|---------|--------|-------------|
 | `reusable-auto-assign` | `issues`, `pull_request` | `default-assignee` | Assigns creator or default assignee if none set |
-| `reusable-auto-project` | `issues` | `project-number` | Adds issue to a GitHub Projects board |
+| `reusable-auto-project` | `issues` | `project-number`, `type-mapping` (JSON) | Adds issue to a GitHub Projects board, optionally sets Type field from labels |
 | `reusable-auto-label` | `pull_request` | `label-config` (JSON) | Labels PRs based on changed file paths |
 | `reusable-pr-validate` | `pull_request` | `require-issue`, `require-labels`, `require-description` | Validates PR has linked issue, description, labels |
 | `reusable-stale-check` | `schedule` | `days-before-stale`, `days-before-close`, `stale-label`, `exempt-labels`, `exempt-assignees` | Labels inactive issues as stale, optionally closes them |

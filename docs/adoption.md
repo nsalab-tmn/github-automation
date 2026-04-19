@@ -46,6 +46,11 @@ jobs:
     uses: nsalab-tmn/github-automation/.github/workflows/reusable-auto-project.yaml@main
     with:
       project-number: 3  # your GitHub Projects board number
+      type-mapping: |
+        {
+          "bug": "Bug",
+          "enhancement": "Feature"
+        }
     secrets:
       token: ${{ secrets.PROJECT_TOKEN }}
 
@@ -114,7 +119,7 @@ For `reusable-auto-project`:
 | Workflow | What it does | Inputs | Secrets |
 |----------|-------------|--------|---------|
 | `reusable-auto-assign` | Assigns issues/PRs to creator or default assignee | `default-assignee` (optional) | — |
-| `reusable-auto-project` | Adds issues to a GitHub Projects board | `project-number` (required) | `token` (required) |
+| `reusable-auto-project` | Adds issues to a GitHub Projects board, sets Type field | `project-number` (required), `type-mapping` (optional, JSON) | `token` (required) |
 | `reusable-auto-label` | Labels PRs based on changed file paths | `label-config` (required, JSON) | — |
 | `reusable-pr-validate` | Validates PR has linked issue, description, labels | `require-issue`, `require-labels`, `require-description` (all optional, default `true`) | — |
 | `reusable-stale-check` | Labels inactive issues as stale, optionally closes them | `days-before-stale`, `days-before-close`, `stale-label`, `exempt-labels`, `exempt-assignees` (all optional) | — |
@@ -129,6 +134,7 @@ Each job in the caller is independent — include only what you need. The caller
 
 - `default-assignee`: GitHub username to fall back to if the issue/PR creator can't be assigned (e.g., not a collaborator). Omit to skip fallback.
 - `project-number`: find this in your project board URL — `https://github.com/orgs/nsalab-tmn/projects/N` → use `N`.
+- `type-mapping`: JSON mapping of issue label names to project Type field option names. First matching label wins. Example: `{"bug": "Bug", "enhancement": "Feature"}`. Omit to skip type assignment.
 - `label-config`: JSON mapping of label names to arrays of glob patterns. Labels are applied additively (never removed). Example: `{"ci-cd": [".github/**"], "documentation": ["docs/**", "*.md"]}`.
 - `require-issue`: require `Closes #N` / `Fixes #N` in the PR body. Default `true`.
 - `require-labels`: require at least one label. Default `true`.
