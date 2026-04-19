@@ -15,33 +15,9 @@ These workflows are **project-agnostic** — they accept configuration via input
 
 ## Quick start
 
-### Using a workflow from another repo
+### Using workflows from another repo
 
-Create a thin caller workflow in your repo:
-
-```yaml
-# .github/workflows/housekeeping.yaml
-name: Housekeeping
-
-on:
-  issues:
-    types: [opened]
-  pull_request:
-    types: [opened]
-
-jobs:
-  auto-assign:
-    uses: nsalab-tmn/github-automation/.github/workflows/reusable-auto-assign.yaml@main
-    with:
-      default-assignee: menus12
-
-  auto-project:
-    uses: nsalab-tmn/github-automation/.github/workflows/reusable-auto-project.yaml@main
-    with:
-      project-number: 3
-    secrets:
-      token: ${{ secrets.PROJECT_TOKEN }}
-```
+See [docs/adoption.md](docs/adoption.md) for the full setup guide with prerequisites, secrets configuration, and caller examples.
 
 ### CI/CD path
 
@@ -56,6 +32,7 @@ github-automation/
 │   ├── pull_request_template.md PR template
 │   └── workflows/               Reusable workflows (the primary deliverable)
 ├── docs/
+│   ├── adoption.md              How to adopt workflows in your repo
 │   └── conventions.md           Technical reference, workflow catalog
 ├── README.md                    This file
 └── CONTRIBUTING.md              How to work in this repo
@@ -66,7 +43,7 @@ github-automation/
 | Workflow | Purpose | Status |
 |----------|---------|--------|
 | `reusable-auto-assign` | Auto-assign issues and PRs to creator or default assignee | Active |
-| `reusable-auto-project` | Add items to GitHub Projects board | Planned |
+| `reusable-auto-project` | Add issues to GitHub Projects board | Active |
 | `reusable-auto-label` | Label PRs by changed file paths | Planned |
 | `reusable-pr-validate` | Validate PR structure and linked issue | Planned |
 | `reusable-stale-check` | Label and manage inactive issues | Planned |

@@ -1,0 +1,65 @@
+name: Auto-add issues to GitHub Project
+
+on:
+  workflow_call:
+    inputs:
+      project-number:
+        description: 'GitHub Projects board number (org-level)'
+        required: true
+        type: number
+    secrets:
+      token:
+        description: 'PAT or GitHub App token with project scope'
+        required: true
+
+jobs:
+  auto-project:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add issue to project
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.token }}
+          script: |
+            const issue = context.payload.issue;
+
+            if (!issue) {
+              core.warning('No issue found in event payload — skipping');
+              return;
+            }
+
+            const org = context.repo.owner;
+            const projectNumber = ${{ inputs.project-number }};
+
+            // Get project node ID
+            const projectQuery = await github.graphql(`
+              query($org: String!, $number: Int!) {
+                organization(login: $org) {
+                  projectV2(number: $number) {
+                    id
+                    title
+                  }
+                }
+              }
+            `, { org, number: projectNumber });
+
+            const project = projectQuery.organization.projectV2;
+            if (!project) {
+              core.setFailed(`Project #${projectNumber} not found in org ${org}`);
+              return;
+            }
+
+            // Add issue to project
+            const mutation = await github.graphql(`
+              mutation($projectId: ID!, $contentId: ID!) {
+                addProjectV2ItemById(input: {projectId: $projectId, contentId: $contentId}) {
+                  item {
+                    id
+                  }
+                }
+              }
+            `, { projectId: project.id, contentId: issue.node_id });
+
+            core.info(`Added issue #${issue.number} to project "${project.title}"`);
+            core.summary.addRaw(`✓ Added issue #${issue.number} to project "${project.title}" (#${projectNumber})`);
+            await core.summary.write();
