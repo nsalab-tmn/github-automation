@@ -31,12 +31,19 @@ jobs:
         uses: actions/github-script@v8
         with:
           script: |
-            const pr = context.payload.pull_request;
+            const payloadPr = context.payload.pull_request;
 
-            if (!pr) {
+            if (!payloadPr) {
               core.warning('No pull request found in event payload — skipping');
               return;
             }
+
+            // Fetch fresh PR data (payload may be stale if earlier jobs modified labels)
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: payloadPr.number,
+            });
 
             const marker = '<!-- pr-validation-bot -->';
             const checks = [];

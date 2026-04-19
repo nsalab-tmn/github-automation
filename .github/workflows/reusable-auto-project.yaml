@@ -8,7 +8,7 @@ on:
         required: true
         type: number
       type-mapping:
-        description: 'JSON mapping of label names to project Type field values'
+        description: 'JSON mapping of label names to native issue type names'
         required: false
         type: string
         default: ''
@@ -55,7 +55,7 @@ jobs:
             }
 
             // Add issue to project
-            const mutation = await github.graphql(`
+            await github.graphql(`
               mutation($projectId: ID!, $contentId: ID!) {
                 addProjectV2ItemById(input: {projectId: $projectId, contentId: $contentId}) {
                   item {
@@ -65,11 +65,10 @@ jobs:
               }
             `, { projectId: project.id, contentId: issue.node_id });
 
-            const itemId = mutation.addProjectV2ItemById.item.id;
             core.info(`Added issue #${issue.number} to project "${project.title}"`);
             core.summary.addRaw(`✓ Added issue #${issue.number} to project "${project.title}" (#${projectNumber})\n`);
 
-            // Set Type field if mapping is provided
+            // Set native issue type if mapping is provided
             const typeMappingRaw = `${{ inputs.type-mapping }}`;
             if (!typeMappingRaw) {
               await core.summary.write();
@@ -105,68 +104,48 @@ jobs:
               return;
             }
 
-            // Get the Type field and its options from the project
-            const fieldsQuery = await github.graphql(`
-              query($projectId: ID!) {
-                node(id: $projectId) {
-                  ... on ProjectV2 {
-                    fields(first: 50) {
-                      nodes {
-                        ... on ProjectV2SingleSelectField {
-                          id
-                          name
-                          options {
-                            id
-                            name
-                          }
-                        }
-                      }
+            // Get available native issue types from the repo
+            const typesQuery = await github.graphql(`
+              query($owner: String!, $repo: String!) {
+                repository(owner: $owner, name: $repo) {
+                  issueTypes {
+                    nodes {
+                      id
+                      name
                     }
                   }
                 }
               }
-            `, { projectId: project.id });
+            `, { owner: context.repo.owner, repo: context.repo.repo });
 
-            const typeField = fieldsQuery.node.fields.nodes.find(
-              f => f.name && f.name.toLowerCase() === 'type'
-            );
+            const issueTypes = typesQuery.repository.issueTypes?.nodes || [];
 
-            if (!typeField) {
-              core.warning('No "Type" field found on the project — skipping type assignment');
-              core.summary.addRaw('⚠ No "Type" field found on the project\n');
+            if (issueTypes.length === 0) {
+              core.warning('No native issue types found on this repo — skipping type assignment');
+              core.summary.addRaw('⚠ No native issue types configured on this repo\n');
               await core.summary.write();
               return;
             }
 
-            const targetOption = typeField.options.find(o => o.name === targetType);
-            if (!targetOption) {
-              core.warning(`Type option "${targetType}" not found on the project — available: ${typeField.options.map(o => o.name).join(', ')}`);
-              core.summary.addRaw(`⚠ Type option "${targetType}" not found — available: ${typeField.options.map(o => o.name).join(', ')}\n`);
+            const targetIssueType = issueTypes.find(t => t.name === targetType);
+            if (!targetIssueType) {
+              core.warning(`Issue type "${targetType}" not found — available: ${issueTypes.map(t => t.name).join(', ')}`);
+              core.summary.addRaw(`⚠ Issue type "${targetType}" not found — available: ${issueTypes.map(t => t.name).join(', ')}\n`);
               await core.summary.write();
               return;
             }
 
-            // Set the Type field value
+            // Set the native issue type
             await github.graphql(`
-              mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
-                updateProjectV2ItemFieldValue(input: {
-                  projectId: $projectId
-                  itemId: $itemId
-                  fieldId: $fieldId
-                  value: { singleSelectOptionId: $optionId }
-                }) {
-                  projectV2Item {
+              mutation($issueId: ID!, $issueTypeId: ID!) {
+                updateIssue(input: {id: $issueId, issueTypeId: $issueTypeId}) {
+                  issue {
                     id
                   }
                 }
               }
-            `, {
-              projectId: project.id,
-              itemId,
-              fieldId: typeField.id,
-              optionId: targetOption.id,
-            });
+            `, { issueId: issue.node_id, issueTypeId: targetIssueType.id });
 
-            core.info(`Set Type to "${targetType}" (matched label "${matchedLabel}")`);
-            core.summary.addRaw(`✓ Set Type to "${targetType}" (matched label \`${matchedLabel}\`)\n`);
+            core.info(`Set issue type to "${targetType}" (matched label "${matchedLabel}")`);
+            core.summary.addRaw(`✓ Set issue type to "${targetType}" (matched label \`${matchedLabel}\`)\n`);
             await core.summary.write();
