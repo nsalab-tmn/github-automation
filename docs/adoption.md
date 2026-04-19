@@ -114,4 +114,4 @@ Each job in the caller is independent — include only what you need. The caller
 
 Callers pinned to `@main` automatically get the latest workflow version. No action needed when this repo is updated.
 
-For stability, pin to a tag (e.g., `@v1`) and update manually when ready.
+For stability, pin to a specific commit SHA or tag (e.g., `@v1`) and update manually when ready.
