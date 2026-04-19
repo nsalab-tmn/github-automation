@@ -5,7 +5,7 @@ on:
   issues:
     types: [opened]
   pull_request:
-    types: [opened]
+    types: [opened, synchronize]
   workflow_dispatch:
 
 jobs:
@@ -14,6 +14,16 @@ jobs:
     uses: nsalab-tmn/github-automation/.github/workflows/reusable-auto-assign.yaml@main
     with:
       default-assignee: menus12
+
+  auto-label:
+    if: github.event_name == 'pull_request'
+    uses: nsalab-tmn/github-automation/.github/workflows/reusable-auto-label.yaml@main
+    with:
+      label-config: |
+        {
+          "ci-cd": [".github/**"],
+          "documentation": ["docs/**", "*.md"]
+        }
 
   bulk-assign:
     if: github.event_name == 'workflow_dispatch'
