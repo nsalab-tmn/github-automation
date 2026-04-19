@@ -8,6 +8,7 @@ Technical reference for github-automation workflows.
 |----------|-----------|
 | [README.md](../README.md) | First time here, need quick orientation |
 | [CONTRIBUTING.md](../CONTRIBUTING.md) | About to make changes |
+| [docs/adoption.md](adoption.md) | Adding workflows to your repo |
 | This file | Need technical details on workflows |
 
 ## Workflow naming
