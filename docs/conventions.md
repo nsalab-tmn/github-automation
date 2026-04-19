@@ -30,11 +30,16 @@ Examples: `reusable-auto-assign.yml`, `reusable-auto-project.yml`, `reusable-sta
 
 ## Workflow catalog
 
-### Planned workflows
+### Active workflows
 
 | Workflow | Trigger | Inputs | What it does |
 |----------|---------|--------|-------------|
 | `reusable-auto-assign` | `issues`, `pull_request` | `default-assignee` | Assigns creator or default assignee if none set |
+
+### Planned workflows
+
+| Workflow | Trigger | Inputs | What it does |
+|----------|---------|--------|-------------|
 | `reusable-auto-project` | `issues`, `pull_request` | `project-number` | Adds item to a GitHub Projects board |
 | `reusable-auto-label` | `pull_request` | `label-config` (JSON) | Labels PRs based on changed file paths |
 | `reusable-pr-validate` | `pull_request` | `require-issue`, `require-labels` | Validates PR has linked issue, description, labels |
