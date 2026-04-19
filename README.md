@@ -20,7 +20,7 @@ These workflows are **project-agnostic** — they accept configuration via input
 Create a thin caller workflow in your repo:
 
 ```yaml
-# .github/workflows/housekeeping.yml
+# .github/workflows/housekeeping.yaml
 name: Housekeeping
 
 on:
@@ -31,12 +31,12 @@ on:
 
 jobs:
   auto-assign:
-    uses: nsalab-tmn/github-automation/.github/workflows/reusable-auto-assign.yml@main
+    uses: nsalab-tmn/github-automation/.github/workflows/reusable-auto-assign.yaml@main
     with:
       default-assignee: menus12
 
   auto-project:
-    uses: nsalab-tmn/github-automation/.github/workflows/reusable-auto-project.yml@main
+    uses: nsalab-tmn/github-automation/.github/workflows/reusable-auto-project.yaml@main
     with:
       project-number: 3
     secrets:

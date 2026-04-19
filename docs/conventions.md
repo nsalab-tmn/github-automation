@@ -15,10 +15,10 @@ Technical reference for github-automation workflows.
 All reusable workflows follow the pattern:
 
 ```
-reusable-<action>.yml
+reusable-<action>.yaml
 ```
 
-Examples: `reusable-auto-assign.yml`, `reusable-auto-project.yml`, `reusable-stale-check.yml`.
+Examples: `reusable-auto-assign.yaml`, `reusable-auto-project.yaml`, `reusable-stale-check.yaml`.
 
 ## Workflow design principles
 
@@ -50,7 +50,7 @@ Examples: `reusable-auto-assign.yml`, `reusable-auto-project.yml`, `reusable-sta
 Each consuming repo creates a thin caller:
 
 ```yaml
-# .github/workflows/housekeeping.yml
+# .github/workflows/housekeeping.yaml
 name: Housekeeping
 
 on:
@@ -61,12 +61,12 @@ on:
 
 jobs:
   auto-assign:
-    uses: nsalab-tmn/github-automation/.github/workflows/reusable-auto-assign.yml@main
+    uses: nsalab-tmn/github-automation/.github/workflows/reusable-auto-assign.yaml@main
     with:
       default-assignee: menus12
 
   auto-project:
-    uses: nsalab-tmn/github-automation/.github/workflows/reusable-auto-project.yml@main
+    uses: nsalab-tmn/github-automation/.github/workflows/reusable-auto-project.yaml@main
     with:
       project-number: 3
     secrets:
@@ -79,6 +79,17 @@ jobs:
 - Boolean inputs default to `true` for opt-out rather than opt-in
 - Complex config (like label mappings) passed as JSON strings
 - Secrets passed via `secrets:` block, never via `inputs:`
+
+### Run name convention
+
+Caller workflows must set `run-name` for readable Actions UI history:
+
+```yaml
+name: housekeeping
+run-name: "[${{github.run_number}}] Housekeeping [${{github.event_name}}]"
+```
+
+Format: `[${{github.run_number}}] Description [${{context}}]` — consistent with other org repos.
 
 ### Permissions convention
 

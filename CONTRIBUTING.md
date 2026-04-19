@@ -6,7 +6,7 @@
 
 | Task | How |
 |------|-----|
-| Add a new workflow | Create `reusable-<name>.yml` in `.github/workflows/`, document in `docs/conventions.md` |
+| Add a new workflow | Create `reusable-<name>.yaml` in `.github/workflows/`, document in `docs/conventions.md` |
 | Test a workflow | Call it from a test repo with `@<branch>` ref |
 | Update docs | Edit relevant file, update README table if adding a workflow |
 

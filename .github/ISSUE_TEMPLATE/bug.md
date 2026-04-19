@@ -6,7 +6,7 @@ labels: bug
 
 ## Which workflow?
 
-<!-- e.g., reusable-auto-assign.yml -->
+<!-- e.g., reusable-auto-assign.yaml -->
 
 ## Called from which repo?
 
