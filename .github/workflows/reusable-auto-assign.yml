@@ -1,0 +1,82 @@
+name: Auto-assign issues and PRs
+
+on:
+  workflow_call:
+    inputs:
+      default-assignee:
+        description: 'GitHub username to assign if creator cannot be assigned'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  auto-assign:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Auto-assign
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const event = context.eventName;
+            const item = context.payload.issue || context.payload.pull_request;
+
+            if (!item) {
+              core.warning('No issue or PR found in event payload');
+              return;
+            }
+
+            // Skip if already assigned
+            if (item.assignees && item.assignees.length > 0) {
+              core.info(`Already assigned to: ${item.assignees.map(a => a.login).join(', ')}`);
+              core.summary.addRaw(`✓ Already assigned to ${item.assignees.map(a => a.login).join(', ')} — skipped`);
+              await core.summary.write();
+              return;
+            }
+
+            const creator = item.user.login;
+            const number = item.number;
+            const issueOrPr = event === 'issues' ? 'Issue' : 'PR';
+            const endpoint = event === 'issues' ? 'issues' : 'pulls';
+
+            // Try assigning the creator
+            try {
+              await github.rest.issues.addAssignees({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: number,
+                assignees: [creator],
+              });
+              core.info(`Assigned ${issueOrPr} #${number} to creator @${creator}`);
+              core.summary.addRaw(`✓ Assigned ${issueOrPr} #${number} to creator @${creator}`);
+              await core.summary.write();
+              return;
+            } catch (error) {
+              core.warning(`Could not assign creator @${creator}: ${error.message}`);
+            }
+
+            // Fall back to default assignee
+            const defaultAssignee = '${{ inputs.default-assignee }}';
+            if (!defaultAssignee) {
+              core.warning('Creator assignment failed and no default-assignee configured');
+              core.summary.addRaw(`⚠ Could not assign ${issueOrPr} #${number} — creator @${creator} failed and no default-assignee set`);
+              await core.summary.write();
+              return;
+            }
+
+            try {
+              await github.rest.issues.addAssignees({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: number,
+                assignees: [defaultAssignee],
+              });
+              core.info(`Assigned ${issueOrPr} #${number} to default assignee @${defaultAssignee}`);
+              core.summary.addRaw(`✓ Assigned ${issueOrPr} #${number} to default assignee @${defaultAssignee} (creator @${creator} could not be assigned)`);
+              await core.summary.write();
+            } catch (error) {
+              core.setFailed(`Could not assign default assignee @${defaultAssignee}: ${error.message}`);
+            }
