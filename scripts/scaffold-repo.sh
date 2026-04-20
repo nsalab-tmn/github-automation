@@ -152,7 +152,8 @@ git add -A
 git commit -m "Initial scaffolding: documentation, templates, conventions
 
 Created via github-automation scaffold workflow."
-git push
+git branch -M main
+git push -u origin main
 
 endlog
 

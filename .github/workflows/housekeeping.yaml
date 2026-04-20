@@ -21,7 +21,7 @@ jobs:
     with:
       label-config: |
         {
-          "ci-cd": [".github/**"],
+          "ci-cd": [".github/**", "scripts/**", "templates/**"],
           "documentation": ["docs/**", "*.md"]
         }
 
