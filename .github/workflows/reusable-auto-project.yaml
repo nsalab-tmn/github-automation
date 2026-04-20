@@ -179,7 +179,7 @@ jobs:
             const typesQuery = await github.graphql(`
               query($owner: String!, $repo: String!) {
                 repository(owner: $owner, name: $repo) {
-                  issueTypes {
+                  issueTypes(first: 50) {
                     nodes {
                       id
                       name
