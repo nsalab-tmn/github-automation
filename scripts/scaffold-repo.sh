@@ -47,6 +47,7 @@ gh repo create "${ORG}/${REPO_NAME}" \
   --disable-wiki
 
 cd "${REPO_NAME}"
+git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${ORG}/${REPO_NAME}.git"
 
 endlog
 
