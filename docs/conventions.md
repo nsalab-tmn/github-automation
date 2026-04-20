@@ -40,6 +40,7 @@ Examples: `reusable-auto-assign.yaml`, `reusable-auto-project.yaml`, `reusable-s
 | `reusable-auto-label` | `pull_request` | `label-config` (JSON) | Labels PRs based on changed file paths |
 | `reusable-pr-validate` | `pull_request` | `require-issue`, `require-labels`, `require-description` | Validates PR has linked issue, description, labels |
 | `reusable-stale-check` | `schedule` | `days-before-stale`, `days-before-close`, `stale-label`, `exempt-labels`, `exempt-assignees` | Labels inactive issues as stale, optionally closes them |
+| `scaffold-repo` | `issues` (with `repository-request` label) | Issue form fields | Creates a new repo with org standards via issue form |
 
 ### Caller workflow pattern
 

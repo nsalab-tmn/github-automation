@@ -1,0 +1,43 @@
+name: Create repository
+description: Request a new repository with org standards
+labels: [repository-request]
+body:
+  - type: input
+    id: repo-name
+    attributes:
+      label: Repository name
+      description: "Will be created as nsalab-tmn/<name>"
+      placeholder: "cheburnet-service"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: One-line repo description
+      placeholder: "Ansible configuration for ..."
+
+  - type: dropdown
+    id: repo-type
+    attributes:
+      label: Repository type
+      options:
+        - ansible
+        - docs
+    validations:
+      required: true
+
+  - type: input
+    id: project-number
+    attributes:
+      label: Project board number
+      description: "From https://github.com/orgs/nsalab-tmn/projects/N (leave empty to skip)"
+      placeholder: "6"
+
+  - type: input
+    id: default-assignee
+    attributes:
+      label: Default assignee
+      description: GitHub username for auto-assign fallback
+      placeholder: "menus12"

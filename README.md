@@ -10,6 +10,7 @@ Reusable workflows that enforce project hygiene across all organization reposito
 - Automatic labeling
 - PR validation
 - Stale issue management
+- Issue-driven repo scaffolding
 
 These workflows are **project-agnostic** — they accept configuration via inputs and work with any repo in the organization.
 
@@ -34,6 +35,12 @@ github-automation/
 ├── docs/
 │   ├── adoption.md              How to adopt workflows in your repo
 │   └── conventions.md           Technical reference, workflow catalog
+├── scripts/
+│   └── scaffold-repo.sh         Repo scaffolding logic
+├── templates/                   Repo scaffolding templates
+│   ├── common/                  Shared across all repo types
+│   ├── ansible/                 Ansible repo type
+│   └── docs/                    Docs repo type
 ├── README.md                    This file
 └── CONTRIBUTING.md              How to work in this repo
 ```
@@ -47,5 +54,6 @@ github-automation/
 | `reusable-auto-label` | Label PRs by changed file paths | Active |
 | `reusable-pr-validate` | Validate PR structure and linked issue | Active |
 | `reusable-stale-check` | Label and manage inactive issues | Active |
+| `scaffold-repo` | Create new repos via issue form with org standards | Active |
 
 See [docs/conventions.md](docs/conventions.md) for the full catalog with inputs/outputs documentation.
