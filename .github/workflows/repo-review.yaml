@@ -1,0 +1,113 @@
+name: repo-review
+run-name: "[${{github.run_number}}] Repo review [${{github.event_name}}]"
+
+on:
+  schedule:
+    - cron: '0 9 * * 1'  # Monday 9am UTC
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Python dependencies
+        run: pip install anthropic
+
+      # --- GATHER ---
+      - name: Gather repo state
+        env:
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ./scripts/gather-repo-state.sh > repo-state.json
+          echo "### Gathered state" >> "$GITHUB_STEP_SUMMARY"
+          echo '```json' >> "$GITHUB_STEP_SUMMARY"
+          cat repo-state.json >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      # --- DECIDE ---
+      - name: Analyze with Claude
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          python3 ./scripts/review-repo.py repo-state.json > review.json
+          echo "### Review output" >> "$GITHUB_STEP_SUMMARY"
+          echo '```json' >> "$GITHUB_STEP_SUMMARY"
+          cat review.json >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      # --- EXECUTE ---
+      - name: Post review on pinned issue
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('fs');
+            const review = JSON.parse(fs.readFileSync('review.json', 'utf8'));
+
+            // Find the pinned issue
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'pinned',
+              state: 'open',
+              per_page: 1,
+            });
+
+            if (issues.data.length === 0) {
+              core.warning('No pinned issue found — posting as step summary only');
+              return;
+            }
+
+            const pinnedIssue = issues.data[0];
+            const marker = '<!-- repo-review-bot -->';
+
+            // Format findings
+            const scoreEmoji = review.health_score >= 8 ? '🟢' : review.health_score >= 5 ? '🟡' : '🔴';
+            let body = `${marker}\n### Weekly Repo Review\n\n`;
+            body += `**Health score:** ${scoreEmoji} ${review.health_score}/10\n\n`;
+            body += `${review.summary}\n\n`;
+
+            if (review.findings.length > 0) {
+              body += `| Type | Issue | Recommendation |\n`;
+              body += `|------|-------|----------------|\n`;
+              for (const f of review.findings) {
+                body += `| ${f.type} | #${f.number} ${f.title} | ${f.recommendation} |\n`;
+              }
+            } else {
+              body += `No issues found — repo is in good shape.\n`;
+            }
+
+            body += `\n<sub>Generated at ${new Date().toISOString()} by Layer 3 repo review</sub>`;
+
+            // Find existing review comment or create new
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pinnedIssue.number,
+            });
+
+            const existing = comments.find(c => c.body && c.body.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+              core.info(`Updated review comment on #${pinnedIssue.number}`);
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pinnedIssue.number,
+                body,
+              });
+              core.info(`Posted review comment on #${pinnedIssue.number}`);
+            }
