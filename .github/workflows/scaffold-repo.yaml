@@ -1,0 +1,119 @@
+name: scaffold-repo
+run-name: "[${{github.run_number}}] Scaffold repo [${{github.event.issue.title}}]"
+
+on:
+  issues:
+    types: [opened, labeled]
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  scaffold:
+    if: contains(github.event.issue.labels.*.name, 'repository-request')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Parse issue form
+        id: parse
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const body = context.payload.issue.body || '';
+
+            function getField(name) {
+              const regex = new RegExp(`### ${name}\\s*\\n\\s*([^\\n]+)`, 'i');
+              const match = body.match(regex);
+              return match ? match[1].trim() : '';
+            }
+
+            const repoName = getField('Repository name');
+            const description = getField('Description');
+            const repoType = getField('Repository type');
+            const projectNumber = getField('Project board number');
+            const defaultAssignee = getField('Default assignee');
+
+            if (!repoName || !repoType) {
+              core.setFailed('Missing required fields: Repository name and Repository type');
+              return;
+            }
+
+            core.setOutput('repo-name', repoName);
+            core.setOutput('description', description || '');
+            core.setOutput('repo-type', repoType);
+            core.setOutput('project-number', projectNumber || '');
+            core.setOutput('default-assignee', defaultAssignee || 'menus12');
+
+      - name: Run scaffold script
+        env:
+          ORG: nsalab-tmn
+          REPO_NAME: ${{ steps.parse.outputs.repo-name }}
+          DESCRIPTION: ${{ steps.parse.outputs.description }}
+          REPO_TYPE: ${{ steps.parse.outputs.repo-type }}
+          PROJECT_NUMBER: ${{ steps.parse.outputs.project-number }}
+          DEFAULT_ASSIGNEE: ${{ steps.parse.outputs.default-assignee }}
+          PROJECT_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+          GH_TOKEN: ${{ secrets.SCAFFOLD_TOKEN }}
+        run: ./scripts/scaffold-repo.sh
+
+      - name: Comment on issue
+        if: success()
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const repoName = '${{ steps.parse.outputs.repo-name }}';
+            const repoType = '${{ steps.parse.outputs.repo-type }}';
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: [
+                `### Repository created`,
+                ``,
+                `**Repo**: https://github.com/nsalab-tmn/${repoName}`,
+                `**Type**: ${repoType}`,
+                ``,
+                `**What was set up:**`,
+                `- [x] Repository created (private)`,
+                `- [x] Documentation scaffolding (README, CONTRIBUTING, docs/conventions)`,
+                `- [x] Housekeeping + stale-check workflows`,
+                `- [x] Issue templates, PR template`,
+                `- [x] Labels (common + ${repoType}-specific)`,
+                `- [x] Pinned context issue`,
+                ``,
+                `**Manual steps remaining:**`,
+                `- [ ] Add domain-specific content`,
+                repoType === 'ansible' ? `- [ ] Generate SOPS age keypair and update .sops.yaml` : '',
+                repoType === 'ansible' ? `- [ ] Set SOPS_AGE_KEY environment secret` : '',
+                `- [ ] Populate inventory / content`,
+              ].filter(Boolean).join('\n'),
+            });
+
+      - name: Close issue
+        if: success()
+        uses: actions/github-script@v8
+        with:
+          script: |
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              state: 'closed',
+              state_reason: 'completed',
+            });
+
+      - name: Comment on failure
+        if: failure()
+        uses: actions/github-script@v8
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `### Scaffold failed\n\nCheck the [workflow run](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}) for details.`,
+            });
