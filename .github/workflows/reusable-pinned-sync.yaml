@@ -1,0 +1,177 @@
+name: Sync pinned context issue
+
+on:
+  workflow_call:
+    inputs:
+      pinned-label:
+        description: 'Label identifying the pinned context issue'
+        required: false
+        type: string
+        default: pinned
+
+permissions:
+  issues: write
+
+jobs:
+  pinned-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sync pinned issue
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const pinnedLabel = '${{ inputs.pinned-label }}';
+
+            // Find the pinned issue
+            const issues = await github.rest.issues.listForRepo({
+              owner, repo,
+              labels: pinnedLabel,
+              state: 'open',
+              per_page: 1,
+            });
+
+            if (issues.data.length === 0) {
+              core.warning(`No open issue with label "${pinnedLabel}" found — skipping`);
+              return;
+            }
+
+            const pinnedIssue = issues.data[0];
+            let body = pinnedIssue.body || '';
+
+            // Helper: extract content between markers
+            function getSection(text, name) {
+              const regex = new RegExp(`<!-- auto:${name} -->([\\s\\S]*?)<!-- /auto:${name} -->`, 'm');
+              const match = text.match(regex);
+              return match ? match[1] : null;
+            }
+
+            // Helper: replace content between markers
+            function setSection(text, name, content) {
+              const regex = new RegExp(`<!-- auto:${name} -->[\\s\\S]*?<!-- /auto:${name} -->`, 'm');
+              return text.replace(regex, `<!-- auto:${name} -->\n${content}\n<!-- /auto:${name} -->`);
+            }
+
+            // --- Fetch all issues (excluding pinned and PRs) ---
+
+            const allIssues = await github.paginate(github.rest.issues.listForRepo, {
+              owner, repo,
+              state: 'all',
+              per_page: 100,
+            });
+
+            const repoIssues = allIssues.filter(i =>
+              !i.pull_request && i.number !== pinnedIssue.number
+            );
+
+            // --- Update checklist section ---
+
+            const checklistSection = getSection(body, 'checklist');
+            if (checklistSection !== null) {
+              let newChecklist = checklistSection;
+
+              // Find all issue references like (#N)
+              const issueRefs = [...checklistSection.matchAll(/\(#(\d+)\)/g)];
+              for (const match of issueRefs) {
+                const issueNum = parseInt(match[1]);
+                const issue = repoIssues.find(i => i.number === issueNum);
+                if (!issue) continue;
+
+                const isClosed = issue.state === 'closed';
+                // Find the line containing this issue reference
+                const lineRegex = new RegExp(`^- \\[[ x]\\] (.+\\(#${issueNum}\\).*)$`, 'm');
+                const lineMatch = newChecklist.match(lineRegex);
+                if (lineMatch) {
+                  const checkbox = isClosed ? '[x]' : '[ ]';
+                  newChecklist = newChecklist.replace(lineMatch[0], `- ${checkbox} ${lineMatch[1]}`);
+                }
+              }
+
+              body = setSection(body, 'checklist', newChecklist);
+            }
+
+            // --- Update remaining section ---
+
+            const remainingSection = getSection(body, 'remaining');
+            if (remainingSection !== null) {
+              const openIssues = repoIssues.filter(i =>
+                i.state === 'open' &&
+                !i.labels.some(l => l.name === pinnedLabel)
+              );
+
+              let remaining;
+              if (openIssues.length === 0) {
+                remaining = 'No open issues.';
+              } else {
+                const header = '| Issue | Title | Labels |\n|-------|-------|--------|\n';
+                const rows = openIssues
+                  .sort((a, b) => a.number - b.number)
+                  .map(i => {
+                    const labels = i.labels.map(l => `\`${l.name}\``).join(', ') || '—';
+                    return `| #${i.number} | ${i.title} | ${labels} |`;
+                  })
+                  .join('\n');
+                remaining = header + rows;
+              }
+
+              body = setSection(body, 'remaining', remaining);
+            }
+
+            // --- Update completed section ---
+
+            const completedSection = getSection(body, 'completed');
+            if (completedSection !== null) {
+              const closedIssues = repoIssues.filter(i => i.state === 'closed');
+
+              // For each closed issue, find the PR that closed it
+              const completedLines = [];
+              for (const issue of closedIssues.sort((a, b) => a.number - b.number)) {
+                // Check timeline for closing PR
+                let closingPr = null;
+                try {
+                  const events = await github.rest.issues.listEventsForTimeline({
+                    owner, repo,
+                    issue_number: issue.number,
+                    per_page: 100,
+                  });
+                  const closeEvent = events.data.find(e =>
+                    e.event === 'cross-referenced' &&
+                    e.source?.issue?.pull_request &&
+                    e.source?.issue?.state === 'closed' &&
+                    e.source?.issue?.pull_request?.merged_at
+                  );
+                  if (closeEvent) {
+                    closingPr = closeEvent.source.issue.number;
+                  }
+                } catch {
+                  // Timeline API may not be available, skip
+                }
+
+                const prRef = closingPr ? ` — merged via #${closingPr}` : '';
+                completedLines.push(`- #${issue.number} ${issue.title}${prRef}`);
+              }
+
+              const completed = completedLines.length > 0
+                ? completedLines.join('\n')
+                : '(none yet)';
+
+              body = setSection(body, 'completed', completed);
+            }
+
+            // --- Update only if changed ---
+
+            if (body === pinnedIssue.body) {
+              core.info('Pinned issue is already up to date — no changes');
+              return;
+            }
+
+            await github.rest.issues.update({
+              owner, repo,
+              issue_number: pinnedIssue.number,
+              body,
+            });
+
+            core.info(`Updated pinned issue #${pinnedIssue.number}`);
+            core.summary.addRaw(`✓ Synced pinned issue #${pinnedIssue.number}`);
+            await core.summary.write();
