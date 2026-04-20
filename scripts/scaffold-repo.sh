@@ -11,9 +11,6 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TEMPLATE_DIR="${SCRIPT_DIR}/../templates"
-WORK_DIR=$(mktemp -d)
-
-trap 'rm -rf "${WORK_DIR}"' EXIT
 
 log() { echo "::group::$1"; }
 endlog() { echo "::endgroup::"; }
@@ -40,11 +37,17 @@ log "Creating repo nsalab-tmn/${REPO_NAME}"
 
 DESCRIPTION="${DESCRIPTION:-}"
 
-gh repo create "${ORG}/${REPO_NAME}" \
-  --private \
-  --description "${DESCRIPTION}" \
-  --clone \
-  --disable-wiki
+# Check if repo already exists (previous failed run may have created it)
+if gh repo view "${ORG}/${REPO_NAME}" &>/dev/null; then
+  echo "::warning::Repo ${ORG}/${REPO_NAME} already exists — attempting to clone and continue"
+  gh repo clone "${ORG}/${REPO_NAME}" "${REPO_NAME}"
+else
+  gh repo create "${ORG}/${REPO_NAME}" \
+    --private \
+    --description "${DESCRIPTION}" \
+    --clone \
+    --disable-wiki
+fi
 
 cd "${REPO_NAME}"
 git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${ORG}/${REPO_NAME}.git"
@@ -78,6 +81,7 @@ if [[ -n "${PROJECT_NUMBER}" ]]; then
     uses: nsalab-tmn/github-automation/.github/workflows/reusable-auto-project.yaml@main
     with:
       project-number: ${PROJECT_NUMBER}
+      default-status: Backlog
       type-mapping: |
         {
           \"bug\": \"Bug\",
