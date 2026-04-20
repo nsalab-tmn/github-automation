@@ -102,6 +102,46 @@ jobs:
       exempt-labels: pinned,in-progress
 ```
 
+### Pinned issue sync (separate caller)
+
+Keeps the pinned context issue in sync with repo state. Triggered on issue close, PR merge, and weekly schedule:
+
+```yaml
+# .github/workflows/pinned-sync.yaml
+name: pinned-sync
+run-name: "[${{github.run_number}}] Pinned sync [${{github.event_name}}]"
+
+on:
+  issues:
+    types: [closed]
+  pull_request:
+    types: [closed]
+  schedule:
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+jobs:
+  pinned-sync:
+    uses: nsalab-tmn/github-automation/.github/workflows/reusable-pinned-sync.yaml@main
+```
+
+The pinned issue must use HTML comment markers to define auto-updated sections:
+
+```markdown
+<!-- auto:checklist -->
+- [ ] Task one (#5)
+- [ ] Task two (#6)
+<!-- /auto:checklist -->
+
+<!-- auto:remaining -->
+<!-- /auto:remaining -->
+
+<!-- auto:completed -->
+<!-- /auto:completed -->
+```
+
+Content outside markers is never modified.
+
 ### 2. Configure secrets
 
 For `reusable-auto-project`:
@@ -127,6 +167,7 @@ For `reusable-auto-project`:
 | `reusable-auto-label` | Labels PRs based on changed file paths | `label-config` (required, JSON) | — |
 | `reusable-pr-validate` | Validates PR has linked issue, description, labels | `require-issue`, `require-labels`, `require-description` (all optional, default `true`) | — |
 | `reusable-stale-check` | Labels inactive issues as stale, optionally closes them | `days-before-stale`, `days-before-close`, `stale-label`, `exempt-labels`, `exempt-assignees` (all optional) | — |
+| `reusable-pinned-sync` | Auto-updates pinned issue checklist, remaining, and completed sections | `pinned-label` (optional, default `pinned`) | — |
 
 ## Customization
 

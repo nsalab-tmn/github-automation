@@ -54,6 +54,7 @@ github-automation/
 | `reusable-auto-label` | Label PRs by changed file paths | Active |
 | `reusable-pr-validate` | Validate PR structure and linked issue | Active |
 | `reusable-stale-check` | Label and manage inactive issues | Active |
+| `reusable-pinned-sync` | Auto-update pinned context issue from repo state | Active |
 | `scaffold-repo` | Create new repos via issue form with org standards | Active |
 
 See [docs/conventions.md](docs/conventions.md) for the full catalog with inputs/outputs documentation.
