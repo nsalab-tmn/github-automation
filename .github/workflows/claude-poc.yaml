@@ -1,0 +1,29 @@
+name: claude-poc
+run-name: "[${{github.run_number}}] Claude PoC [${{github.event_name}}]"
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: read
+
+jobs:
+  hello-world:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Run Claude Code
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          OUTPUT=$(claude --print "You are running inside a GitHub Actions workflow for the nsalab-tmn/github-automation repo. Say hello and confirm you can see the repo files by listing the top-level directory contents.")
+          echo "${OUTPUT}"
+          echo "## Claude Code PoC" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "${OUTPUT}" >> "$GITHUB_STEP_SUMMARY"
