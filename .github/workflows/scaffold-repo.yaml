@@ -3,7 +3,11 @@ run-name: "[${{github.run_number}}] Scaffold repo [${{github.event.issue.title}}
 
 on:
   issues:
-    types: [opened, labeled]
+    types: [opened]
+
+concurrency:
+  group: scaffold-${{ github.event.issue.number }}
+  cancel-in-progress: false
 
 permissions:
   issues: write
