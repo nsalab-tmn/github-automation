@@ -32,7 +32,7 @@ run-name: "[${{github.run_number}}] Housekeeping [${{github.event_name}}]"
 
 on:
   issues:
-    types: [opened]
+    types: [opened, typed]
   pull_request:
     types: [opened, synchronize, edited, labeled, unlabeled, ready_for_review, review_requested, closed]
   pull_request_review:
@@ -55,6 +55,15 @@ jobs:
           "bug": "Bug",
           "enhancement": "Feature"
         }
+    secrets:
+      app-id: ${{ secrets.APP_ID }}
+      app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+  issue-defaults:
+    if: github.event_name == 'issues'
+    uses: nsalab-tmn/github-automation/.github/workflows/reusable-issue-defaults.yaml@main
+    with:
+      project-number: 3
     secrets:
       app-id: ${{ secrets.APP_ID }}
       app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
@@ -287,6 +296,7 @@ If org-level secrets are already configured, no per-repo setup is needed.
 | `reusable-auto-project` | Adds issues to a GitHub Projects board, sets Type field | `project-number` (required), `type-mapping` (optional, JSON) | `app-id`, `app-private-key` (required) |
 | `reusable-project-sync` | Syncs project board Status based on issue/PR lifecycle | `project-number` (required), `status-backlog`, `status-in-progress`, `status-in-review`, `status-done` (all optional) | `app-id`, `app-private-key` (required) |
 | `reusable-auto-label` | Labels PRs based on changed file paths | `label-config` (required, JSON) | — |
+| `reusable-issue-defaults` | Sets Priority/Size defaults from issue type | `project-number` (required), `defaults-mapping` (optional, JSON) | `app-id`, `app-private-key` (required) |
 | `reusable-branch-validate` | Validates branch name convention and linked issue | `branch-pattern` (optional, regex), `exempt-authors` (optional) | — |
 | `reusable-pr-size` | Labels PRs by lines changed (XS/S/M/L/XL) | `size-xs`, `size-s`, `size-m`, `size-l` (all optional), `exclude-patterns` (optional, JSON) | — |
 | `reusable-pr-validate` | Validates PR has linked issue, description, labels | `require-issue`, `require-labels`, `require-description` (all optional, default `true`) | — |
