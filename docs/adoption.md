@@ -14,7 +14,8 @@ Some workflows require secrets that must be configured in the consuming repo:
 
 | Secret | Required by | How to create |
 |--------|-------------|---------------|
-| `PROJECT_TOKEN` | `reusable-auto-project` | PAT with `project` scope → repo Settings → Secrets → Actions → New repository secret |
+| `APP_ID` | `reusable-auto-project`, `reusable-project-sync` | GitHub App ID from org Settings → Developer settings → GitHub Apps → nsalab-automation |
+| `APP_PRIVATE_KEY` | `reusable-auto-project`, `reusable-project-sync` | Generate private key from the same app settings page |
 
 The default `GITHUB_TOKEN` cannot modify org-level GitHub Projects. A PAT (or GitHub App token) with `project` scope is required.
 
@@ -56,7 +57,8 @@ jobs:
           "enhancement": "Feature"
         }
     secrets:
-      token: ${{ secrets.PROJECT_TOKEN }}
+      app-id: ${{ secrets.APP_ID }}
+      app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
   project-sync:
     if: >-
@@ -68,7 +70,8 @@ jobs:
     with:
       project-number: 3  # same project as auto-project
     secrets:
-      token: ${{ secrets.PROJECT_TOKEN }}
+      app-id: ${{ secrets.APP_ID }}
+      app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
   auto-label:
     if: github.event_name == 'pull_request'
@@ -167,12 +170,13 @@ Content outside markers is never modified.
 
 ### 2. Configure secrets
 
-For `reusable-auto-project`:
+The `nsalab-automation` GitHub App provides identity for project board operations. Secrets are set at the **org level** (shared across all repos):
 
-1. Create a Personal Access Token (classic) at https://github.com/settings/tokens
-2. Select the `project` scope
-3. Go to your repo → Settings → Secrets and variables → Actions
-4. Add `PROJECT_TOKEN` with the PAT value
+1. Go to org Settings → Developer settings → GitHub Apps → nsalab-automation
+2. Note the **App ID** → set as org secret `APP_ID`
+3. Generate a **private key** → set as org secret `APP_PRIVATE_KEY`
+
+If org-level secrets are already configured, no per-repo setup is needed.
 
 ### 3. Verify
 
@@ -186,8 +190,8 @@ For `reusable-auto-project`:
 | Workflow | What it does | Inputs | Secrets |
 |----------|-------------|--------|---------|
 | `reusable-auto-assign` | Assigns issues/PRs to creator or default assignee | `default-assignee` (optional) | — |
-| `reusable-auto-project` | Adds issues to a GitHub Projects board, sets Type field | `project-number` (required), `type-mapping` (optional, JSON) | `token` (required) |
-| `reusable-project-sync` | Syncs project board Status based on issue/PR lifecycle | `project-number` (required), `status-backlog`, `status-in-progress`, `status-in-review`, `status-done` (all optional) | `token` (required) |
+| `reusable-auto-project` | Adds issues to a GitHub Projects board, sets Type field | `project-number` (required), `type-mapping` (optional, JSON) | `app-id`, `app-private-key` (required) |
+| `reusable-project-sync` | Syncs project board Status based on issue/PR lifecycle | `project-number` (required), `status-backlog`, `status-in-progress`, `status-in-review`, `status-done` (all optional) | `app-id`, `app-private-key` (required) |
 | `reusable-auto-label` | Labels PRs based on changed file paths | `label-config` (required, JSON) | — |
 | `reusable-pr-size` | Labels PRs by lines changed (XS/S/M/L/XL) | `size-xs`, `size-s`, `size-m`, `size-l` (all optional), `exclude-patterns` (optional, JSON) | — |
 | `reusable-pr-validate` | Validates PR has linked issue, description, labels | `require-issue`, `require-labels`, `require-description` (all optional, default `true`) | — |
