@@ -31,18 +31,21 @@ run-name: "[${{github.run_number}}] Housekeeping [${{github.event_name}}]"
 
 on:
   issues:
-    types: [opened]
+    types: [opened, reopened, closed]
   pull_request:
-    types: [opened, synchronize, edited, labeled, unlabeled]
+    types: [opened, synchronize, edited, labeled, unlabeled, reopened, ready_for_review, review_requested, closed]
+  pull_request_review:
+    types: [submitted]
 
 jobs:
   auto-assign:
+    if: github.event_name == 'issues' || github.event_name == 'pull_request'
     uses: nsalab-tmn/github-automation/.github/workflows/reusable-auto-assign.yaml@main
     with:
       default-assignee: menus12
 
   auto-project:
-    if: github.event_name == 'issues'
+    if: github.event_name == 'issues' && github.event.action == 'opened'
     uses: nsalab-tmn/github-automation/.github/workflows/reusable-auto-project.yaml@main
     with:
       project-number: 3  # your GitHub Projects board number
@@ -52,6 +55,19 @@ jobs:
           "bug": "Bug",
           "enhancement": "Feature"
         }
+    secrets:
+      token: ${{ secrets.PROJECT_TOKEN }}
+
+  project-sync:
+    if: >-
+      github.event_name == 'pull_request_review'
+      || (github.event_name == 'issues' && github.event.action != 'opened')
+      || (github.event_name == 'pull_request'
+          && contains(fromJSON('["opened","reopened","ready_for_review","review_requested","closed"]'),
+                      github.event.action))
+    uses: nsalab-tmn/github-automation/.github/workflows/reusable-project-sync.yaml@main
+    with:
+      project-number: 3  # same project as auto-project
     secrets:
       token: ${{ secrets.PROJECT_TOKEN }}
 
@@ -78,6 +94,8 @@ jobs:
 ```
 
 > **Important:** If using both `auto-label` and `pr-validate`, add `needs: auto-label` to `pr-validate`. Without this, the jobs race and validation may fail because labels haven't been applied yet.
+
+> **Note on `project-sync` and `auto-project`:** These workflows are complementary — `auto-project` adds new issues to the board on `issues.opened`, while `project-sync` handles status transitions on subsequent events. They don't overlap: `project-sync` explicitly skips `issues.opened`. However, `project-sync` requires the issue to already be on the board (it won't add it). This is naturally ordered by the issue-first workflow — the issue exists on the board before any PR referencing it is opened. If `project-sync` can't find an item on the board, it logs a warning and skips.
 
 ### Stale check (separate caller)
 
@@ -164,6 +182,7 @@ For `reusable-auto-project`:
 |----------|-------------|--------|---------|
 | `reusable-auto-assign` | Assigns issues/PRs to creator or default assignee | `default-assignee` (optional) | — |
 | `reusable-auto-project` | Adds issues to a GitHub Projects board, sets Type field | `project-number` (required), `type-mapping` (optional, JSON) | `token` (required) |
+| `reusable-project-sync` | Syncs project board Status based on issue/PR lifecycle | `project-number` (required), `status-backlog`, `status-in-progress`, `status-in-review`, `status-done` (all optional) | `token` (required) |
 | `reusable-auto-label` | Labels PRs based on changed file paths | `label-config` (required, JSON) | — |
 | `reusable-pr-validate` | Validates PR has linked issue, description, labels | `require-issue`, `require-labels`, `require-description` (all optional, default `true`) | — |
 | `reusable-stale-check` | Labels inactive issues as stale, optionally closes them | `days-before-stale`, `days-before-close`, `stale-label`, `exempt-labels`, `exempt-assignees` (all optional) | — |
@@ -180,6 +199,10 @@ Each job in the caller is independent — include only what you need. The caller
 - `default-assignee`: GitHub username to fall back to if the issue/PR creator can't be assigned (e.g., not a collaborator). Omit to skip fallback.
 - `project-number`: find this in your project board URL — `https://github.com/orgs/nsalab-tmn/projects/N` → use `N`.
 - `default-status`: initial Status value for newly added items (e.g., `Backlog`). **Recommended** — without this, items won't appear in board views that filter by Status.
+- `status-backlog`: Status column name for backlog/reopened items. Default `Backlog`. Must match the option name on your project board exactly.
+- `status-in-progress`: Status column name for items under active development. Default `In Progress`.
+- `status-in-review`: Status column name for items under review. Default `In Review`.
+- `status-done`: Status column name for completed items. Default `Done`.
 - `type-mapping`: JSON mapping of issue label names to project Type field option names. First matching label wins. Example: `{"bug": "Bug", "enhancement": "Feature"}`. Omit to skip type assignment.
 - `label-config`: JSON mapping of label names to arrays of glob patterns. Labels are applied additively (never removed). **Important:** if using `require-labels: true` in pr-validate, every PR must match at least one pattern — ensure your config covers all directories in the repo. Common patterns:
   - `"ci-cd": [".github/**"]`

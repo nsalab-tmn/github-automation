@@ -1,0 +1,324 @@
+name: Sync project board status
+
+on:
+  workflow_call:
+    inputs:
+      project-number:
+        description: 'GitHub Projects board number (org-level)'
+        required: true
+        type: number
+      status-backlog:
+        description: 'Status value for backlog / reopened items'
+        required: false
+        type: string
+        default: 'Backlog'
+      status-in-progress:
+        description: 'Status value for active development'
+        required: false
+        type: string
+        default: 'In Progress'
+      status-in-review:
+        description: 'Status value for items under review'
+        required: false
+        type: string
+        default: 'In Review'
+      status-done:
+        description: 'Status value for completed items'
+        required: false
+        type: string
+        default: 'Done'
+    secrets:
+      token:
+        description: 'PAT or GitHub App token with project scope'
+        required: true
+
+jobs:
+  project-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sync project status
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.token }}
+          script: |
+            const org = context.repo.owner;
+            const repo = context.repo.repo;
+            const projectNumber = ${{ inputs.project-number }};
+            const STATUS_BACKLOG = '${{ inputs.status-backlog }}';
+            const STATUS_IN_PROGRESS = '${{ inputs.status-in-progress }}';
+            const STATUS_IN_REVIEW = '${{ inputs.status-in-review }}';
+            const STATUS_DONE = '${{ inputs.status-done }}';
+
+            // --- Determine event type, target status, and linked issues ---
+
+            const eventName = context.eventName;
+            const action = context.payload.action;
+            let targetStatus = null;
+            let issueNumbers = [];
+            let checkOtherPRs = false;
+            let closedPrNumber = null;
+
+            function parseLinkedIssues(body) {
+              const pattern = /(?:closes|fixes|resolves)\s+#(\d+)/gi;
+              const numbers = [];
+              let match;
+              while ((match = pattern.exec(body || '')) !== null) {
+                numbers.push(parseInt(match[1], 10));
+              }
+              return [...new Set(numbers)];
+            }
+
+            if (eventName === 'issues') {
+              const issue = context.payload.issue;
+              if (!issue) {
+                core.warning('No issue in payload — skipping');
+                return;
+              }
+              issueNumbers = [issue.number];
+
+              if (action === 'reopened') {
+                targetStatus = STATUS_BACKLOG;
+              } else if (action === 'closed') {
+                targetStatus = STATUS_DONE;
+              } else {
+                core.info(`Unhandled issues action "${action}" — skipping`);
+                return;
+              }
+            } else if (eventName === 'pull_request') {
+              const pr = context.payload.pull_request;
+              if (!pr) {
+                core.warning('No pull_request in payload — skipping');
+                return;
+              }
+
+              issueNumbers = parseLinkedIssues(pr.body);
+              if (issueNumbers.length === 0) {
+                core.info('No linked issues found in PR body — skipping');
+                return;
+              }
+
+              if (action === 'opened' || action === 'reopened') {
+                if (pr.draft) {
+                  core.info('PR is a draft — skipping status transition');
+                  return;
+                }
+                targetStatus = STATUS_IN_PROGRESS;
+              } else if (action === 'ready_for_review') {
+                targetStatus = STATUS_IN_REVIEW;
+              } else if (action === 'review_requested') {
+                targetStatus = STATUS_IN_REVIEW;
+              } else if (action === 'closed') {
+                if (pr.merged) {
+                  targetStatus = STATUS_DONE;
+                } else {
+                  checkOtherPRs = true;
+                  closedPrNumber = pr.number;
+                  targetStatus = STATUS_BACKLOG;
+                }
+              } else {
+                core.info(`Unhandled pull_request action "${action}" — skipping`);
+                return;
+              }
+            } else if (eventName === 'pull_request_review') {
+              const review = context.payload.review;
+              const pr = context.payload.pull_request;
+              if (!review || !pr) {
+                core.warning('No review or pull_request in payload — skipping');
+                return;
+              }
+
+              issueNumbers = parseLinkedIssues(pr.body);
+              if (issueNumbers.length === 0) {
+                core.info('No linked issues found in PR body — skipping');
+                return;
+              }
+
+              if (review.state === 'changes_requested') {
+                targetStatus = STATUS_IN_PROGRESS;
+              } else {
+                core.info(`Review state "${review.state}" — no status transition needed`);
+                return;
+              }
+            } else {
+              core.info(`Unhandled event "${eventName}" — skipping`);
+              return;
+            }
+
+            core.info(`Event: ${eventName}.${action} — target: "${targetStatus}" — issues: ${issueNumbers.map(n => '#' + n).join(', ')}`);
+
+            // --- Fetch project and Status field ---
+
+            const projectQuery = await github.graphql(`
+              query($org: String!, $number: Int!) {
+                organization(login: $org) {
+                  projectV2(number: $number) {
+                    id
+                    title
+                  }
+                }
+              }
+            `, { org, number: projectNumber });
+
+            const project = projectQuery.organization.projectV2;
+            if (!project) {
+              core.setFailed(`Project #${projectNumber} not found in org ${org}`);
+              return;
+            }
+
+            const fieldsQuery = await github.graphql(`
+              query($projectId: ID!) {
+                node(id: $projectId) {
+                  ... on ProjectV2 {
+                    fields(first: 50) {
+                      nodes {
+                        ... on ProjectV2SingleSelectField {
+                          id
+                          name
+                          options {
+                            id
+                            name
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            `, { projectId: project.id });
+
+            const statusField = fieldsQuery.node.fields.nodes.find(
+              f => f.name && f.name.toLowerCase() === 'status'
+            );
+
+            if (!statusField) {
+              core.setFailed('No "Status" field found on the project');
+              return;
+            }
+
+            // --- Process each linked issue ---
+
+            const summaryLines = [];
+
+            for (const issueNumber of issueNumbers) {
+              core.info(`Processing issue #${issueNumber}...`);
+
+              // Get issue data
+              let issueData;
+              try {
+                const resp = await github.rest.issues.get({
+                  owner: org,
+                  repo,
+                  issue_number: issueNumber,
+                });
+                issueData = resp.data;
+              } catch (error) {
+                core.warning(`Issue #${issueNumber} not found: ${error.message} — skipping`);
+                summaryLines.push(`⚠ Issue #${issueNumber} not found — skipped`);
+                continue;
+              }
+
+              // Handle PR-closed-without-merge edge case
+              let resolvedStatus = targetStatus;
+              if (checkOtherPRs) {
+                // Don't revert if the issue is already closed (completed via another PR)
+                if (issueData.state === 'closed') {
+                  core.info(`Issue #${issueNumber} is already closed — not reverting status`);
+                  summaryLines.push(`↷ #${issueNumber} is closed — status unchanged`);
+                  continue;
+                }
+
+                // Check for other open PRs linking to this issue
+                const searchQuery = `repo:${org}/${repo} is:pr is:open "Closes #${issueNumber}" OR "Fixes #${issueNumber}" OR "Resolves #${issueNumber}"`;
+                const { data: searchResult } = await github.rest.search.issuesAndPullRequests({ q: searchQuery });
+                const otherOpenPRs = searchResult.items.filter(item => item.number !== closedPrNumber);
+
+                if (otherOpenPRs.length > 0) {
+                  core.info(`Issue #${issueNumber} has ${otherOpenPRs.length} other open PR(s) — not reverting`);
+                  summaryLines.push(`↷ #${issueNumber} — ${otherOpenPRs.length} other open PR(s), status unchanged`);
+                  continue;
+                }
+              }
+
+              // Find the issue's project item on this board
+              const itemQuery = await github.graphql(`
+                query($issueId: ID!) {
+                  node(id: $issueId) {
+                    ... on Issue {
+                      projectItems(first: 50) {
+                        nodes {
+                          id
+                          project {
+                            number
+                          }
+                          fieldValueByName(name: "Status") {
+                            ... on ProjectV2ItemFieldSingleSelectValue {
+                              name
+                              optionId
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              `, { issueId: issueData.node_id });
+
+              const projectItem = itemQuery.node.projectItems?.nodes.find(
+                item => item.project.number === projectNumber
+              );
+
+              if (!projectItem) {
+                core.warning(`Issue #${issueNumber} is not on project #${projectNumber} — skipping`);
+                summaryLines.push(`⚠ #${issueNumber} not on board — skipped`);
+                continue;
+              }
+
+              // Idempotency check
+              const currentStatus = projectItem.fieldValueByName?.name || '(none)';
+              if (currentStatus === resolvedStatus) {
+                core.info(`Issue #${issueNumber} already at "${resolvedStatus}" — skipping`);
+                summaryLines.push(`✓ #${issueNumber} already "${resolvedStatus}" — no change`);
+                continue;
+              }
+
+              // Find target option
+              const targetOption = statusField.options.find(o => o.name === resolvedStatus);
+              if (!targetOption) {
+                core.warning(`Status option "${resolvedStatus}" not found — available: ${statusField.options.map(o => o.name).join(', ')}`);
+                summaryLines.push(`⚠ Status "${resolvedStatus}" not found on board`);
+                continue;
+              }
+
+              // Update status
+              await github.graphql(`
+                mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
+                  updateProjectV2ItemFieldValue(input: {
+                    projectId: $projectId
+                    itemId: $itemId
+                    fieldId: $fieldId
+                    value: { singleSelectOptionId: $optionId }
+                  }) {
+                    projectV2Item {
+                      id
+                    }
+                  }
+                }
+              `, {
+                projectId: project.id,
+                itemId: projectItem.id,
+                fieldId: statusField.id,
+                optionId: targetOption.id,
+              });
+
+              core.info(`Issue #${issueNumber}: "${currentStatus}" → "${resolvedStatus}"`);
+              summaryLines.push(`✓ #${issueNumber}: ${currentStatus} → ${resolvedStatus}`);
+            }
+
+            // --- Job summary ---
+
+            if (summaryLines.length > 0) {
+              core.summary.addRaw(`### Project Sync\n\n${summaryLines.join('\n')}\n`);
+            } else {
+              core.summary.addRaw(`### Project Sync\n\nNo issues processed.\n`);
+            }
+            await core.summary.write();

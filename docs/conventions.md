@@ -37,6 +37,7 @@ Examples: `reusable-auto-assign.yaml`, `reusable-auto-project.yaml`, `reusable-s
 |----------|---------|--------|-------------|
 | `reusable-auto-assign` | `issues`, `pull_request` | `default-assignee` | Assigns creator or default assignee if none set |
 | `reusable-auto-project` | `issues` | `project-number`, `default-status`, `type-mapping` (JSON) | Adds issue to a GitHub Projects board, sets Status and Type |
+| `reusable-project-sync` | `issues`, `pull_request`, `pull_request_review` | `project-number`, `status-backlog`, `status-in-progress`, `status-in-review`, `status-done` | Syncs issue Status on project board based on PR/issue lifecycle events |
 | `reusable-auto-label` | `pull_request` | `label-config` (JSON) | Labels PRs based on changed file paths |
 | `reusable-pr-validate` | `pull_request` | `require-issue`, `require-labels`, `require-description` | Validates PR has linked issue, description, labels |
 | `reusable-stale-check` | `schedule` | `days-before-stale`, `days-before-close`, `stale-label`, `exempt-labels`, `exempt-assignees` | Labels inactive issues as stale, optionally closes them |
@@ -53,18 +54,35 @@ name: Housekeeping
 
 on:
   issues:
-    types: [opened, edited, assigned]
+    types: [opened, reopened, closed]
   pull_request:
-    types: [opened, edited, labeled, unlabeled]
+    types: [opened, synchronize, edited, labeled, unlabeled, reopened, ready_for_review, review_requested, closed]
+  pull_request_review:
+    types: [submitted]
 
 jobs:
   auto-assign:
+    if: github.event_name == 'issues' || github.event_name == 'pull_request'
     uses: nsalab-tmn/github-automation/.github/workflows/reusable-auto-assign.yaml@main
     with:
       default-assignee: menus12
 
   auto-project:
+    if: github.event_name == 'issues' && github.event.action == 'opened'
     uses: nsalab-tmn/github-automation/.github/workflows/reusable-auto-project.yaml@main
+    with:
+      project-number: 3
+    secrets:
+      token: ${{ secrets.PROJECT_TOKEN }}
+
+  project-sync:
+    if: >-
+      github.event_name == 'pull_request_review'
+      || (github.event_name == 'issues' && github.event.action != 'opened')
+      || (github.event_name == 'pull_request'
+          && contains(fromJSON('["opened","reopened","ready_for_review","review_requested","closed"]'),
+                      github.event.action))
+    uses: nsalab-tmn/github-automation/.github/workflows/reusable-project-sync.yaml@main
     with:
       project-number: 3
     secrets:
@@ -119,3 +137,5 @@ Pinned to major versions for stability:
 - **Reusable workflow secrets**: Callers must explicitly pass secrets — they are not inherited. Use `secrets: inherit` only if the caller trusts this repo with all its secrets.
 - **GITHUB_TOKEN scope**: The default `GITHUB_TOKEN` cannot add items to GitHub Projects (org-level). A PAT or GitHub App token with `project` scope is required for `reusable-auto-project`.
 - **Workflow call depth**: GitHub allows max 4 levels of reusable workflow nesting. Keep it flat — callers call this repo directly, no chaining.
+- **project-sync vs auto-project**: Separate workflows with separate concerns. `auto-project` runs on `issues: [opened]` to add new issues to the board and set initial Status/Type. `project-sync` handles ongoing status transitions from PR and issue lifecycle events. Don't combine them.
+- **`pull_request_review` event**: Only fires on `submitted`, not on dismissal. The `changes_requested` state moves the linked issue back to In Progress. The `approved` state is a no-op (stays In Review until merged).
