@@ -127,6 +127,31 @@ jobs:
       exempt-labels: pinned,in-progress
 ```
 
+### Stale PR check (separate caller)
+
+Labels inactive PRs as stale. Optionally closes stale draft PRs. Can share the same schedule as stale-check or run independently:
+
+```yaml
+# .github/workflows/stale-pr.yaml
+name: stale-pr
+run-name: "[${{github.run_number}}] Stale PR check [${{github.event_name}}]"
+
+on:
+  schedule:
+    - cron: '0 9 * * 1'  # Monday 9am UTC
+  workflow_dispatch:
+
+jobs:
+  stale-pr:
+    uses: nsalab-tmn/github-automation/.github/workflows/reusable-stale-pr.yaml@main
+    with:
+      days-before-stale: 14
+      days-before-close: 7
+      exempt-labels: pinned,in-progress
+```
+
+> **Note:** `days-before-close` only applies to draft PRs. Non-draft stale PRs are never auto-closed — the label serves as a signal.
+
 ### Conflict check (separate caller)
 
 Checks open PRs for merge conflicts after pushes to main. Also runs weekly as a fallback:
@@ -218,6 +243,7 @@ If org-level secrets are already configured, no per-repo setup is needed.
 | `reusable-pr-validate` | Validates PR has linked issue, description, labels | `require-issue`, `require-labels`, `require-description` (all optional, default `true`) | — |
 | `reusable-conflict-check` | Detects merge conflicts on open PRs and labels them | `conflict-label` (optional, default `merge-conflict`) | — |
 | `reusable-stale-check` | Labels inactive issues as stale, optionally closes them | `days-before-stale`, `days-before-close`, `stale-label`, `exempt-labels`, `exempt-assignees` (all optional) | — |
+| `reusable-stale-pr` | Labels inactive PRs as stale, optionally closes drafts | `days-before-stale`, `days-before-close`, `stale-label`, `exempt-labels`, `exempt-authors` (all optional) | — |
 | `reusable-pinned-sync` | Auto-updates pinned issue checklist, remaining, and completed sections | `pinned-label` (optional, default `pinned`) | — |
 
 ## Customization

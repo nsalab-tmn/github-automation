@@ -1,0 +1,148 @@
+name: Stale PR check
+
+on:
+  workflow_call:
+    inputs:
+      days-before-stale:
+        description: 'Days of inactivity before labeling stale'
+        required: false
+        type: number
+        default: 14
+      days-before-close:
+        description: 'Days after stale label before closing drafts (0 = never close)'
+        required: false
+        type: number
+        default: 0
+      stale-label:
+        description: 'Label to apply to stale PRs'
+        required: false
+        type: string
+        default: stale
+      exempt-labels:
+        description: 'Comma-separated labels that exempt a PR from stale checks'
+        required: false
+        type: string
+        default: pinned,in-progress
+      exempt-authors:
+        description: 'Comma-separated authors whose PRs are exempt'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  pull-requests: write
+
+jobs:
+  stale-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Process stale PRs
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const daysBeforeStale = ${{ inputs.days-before-stale }};
+            const daysBeforeClose = ${{ inputs.days-before-close }};
+            const staleLabel = '${{ inputs.stale-label }}';
+            const exemptLabels = '${{ inputs.exempt-labels }}'.split(',').map(l => l.trim()).filter(Boolean);
+            const exemptAuthors = '${{ inputs.exempt-authors }}'.split(',').map(a => a.trim()).filter(Boolean);
+
+            const now = new Date();
+            const staleThreshold = new Date(now - daysBeforeStale * 24 * 60 * 60 * 1000);
+
+            let labeled = 0;
+            let closed = 0;
+            let unstaled = 0;
+
+            const pulls = await github.paginate(github.rest.pulls.list, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+            });
+
+            for (const pull of pulls) {
+              const prLabels = pull.labels.map(l => l.name);
+              const prAuthor = pull.user.login;
+
+              // Check exemptions
+              if (exemptLabels.some(l => prLabels.includes(l))) continue;
+              if (exemptAuthors.includes(prAuthor)) continue;
+
+              const isStale = prLabels.includes(staleLabel);
+              const lastActivity = new Date(pull.updated_at);
+
+              if (isStale) {
+                // Check for new activity since stale label was applied
+                if (lastActivity > staleThreshold) {
+                  await github.rest.issues.removeLabel({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: pull.number,
+                    name: staleLabel,
+                  });
+                  core.info(`Un-staled PR #${pull.number} — new activity detected`);
+                  unstaled++;
+                  continue;
+                }
+
+                // Close stale drafts if configured
+                if (daysBeforeClose > 0 && pull.draft) {
+                  const events = await github.paginate(github.rest.issues.listEvents, {
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: pull.number,
+                  });
+
+                  const staleLabelEvent = events
+                    .filter(e => e.event === 'labeled' && e.label && e.label.name === staleLabel)
+                    .pop();
+
+                  if (staleLabelEvent) {
+                    const staledAt = new Date(staleLabelEvent.created_at);
+                    const closeThreshold = new Date(staledAt.getTime() + daysBeforeClose * 24 * 60 * 60 * 1000);
+
+                    if (now > closeThreshold) {
+                      await github.rest.issues.createComment({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        issue_number: pull.number,
+                        body: `This draft PR has been closed because it remained stale for ${daysBeforeClose} days after being labeled.\nFeel free to reopen if this is still relevant.`,
+                      });
+                      await github.rest.pulls.update({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        pull_number: pull.number,
+                        state: 'closed',
+                      });
+                      core.info(`Closed stale draft PR #${pull.number}`);
+                      closed++;
+                    }
+                  }
+                }
+              } else if (lastActivity < staleThreshold) {
+                // Mark as stale
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: pull.number,
+                  labels: [staleLabel],
+                });
+
+                const closeNotice = daysBeforeClose > 0 && pull.draft
+                  ? `\nDraft PRs will be closed in ${daysBeforeClose} days if no further activity occurs.`
+                  : '';
+
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: pull.number,
+                  body: `This pull request has been automatically labeled as stale because it has had no activity for ${daysBeforeStale} days.${closeNotice}\nRemove the \`${staleLabel}\` label or comment to keep it open.`,
+                });
+                core.info(`Labeled PR #${pull.number} as stale`);
+                labeled++;
+              }
+            }
+
+            const summary = `Stale PR check complete: ${labeled} labeled, ${closed} closed, ${unstaled} un-staled`;
+            core.info(summary);
+            core.summary.addRaw(summary);
+            await core.summary.write();
