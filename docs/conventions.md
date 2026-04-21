@@ -109,7 +109,7 @@ name: housekeeping
 run-name: "[${{github.run_number}}] Housekeeping [${{github.event_name}}]"
 ```
 
-Format: `[run_number] Description [context]` — consistent with other org repos.
+Format: `[run_number] Description [context]` — this line will conflict.
 
 ### Permissions convention
 
