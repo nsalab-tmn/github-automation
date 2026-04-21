@@ -59,25 +59,54 @@ jobs:
               return;
             }
 
-            // Add issue to project
-            const mutation = await github.graphql(`
-              mutation($projectId: ID!, $contentId: ID!) {
-                addProjectV2ItemById(input: {projectId: $projectId, contentId: $contentId}) {
-                  item {
-                    id
+            // Check if issue is already on the board (prevents duplicates if
+            // Layer 1 auto-add or a retry already added it)
+            const existingQuery = await github.graphql(`
+              query($issueId: ID!) {
+                node(id: $issueId) {
+                  ... on Issue {
+                    projectItems(first: 50) {
+                      nodes {
+                        id
+                        project {
+                          number
+                        }
+                      }
+                    }
                   }
                 }
               }
-            `, { projectId: project.id, contentId: issue.node_id });
+            `, { issueId: issue.node_id });
 
-            const itemId = mutation.addProjectV2ItemById?.item?.id;
-            if (!itemId) {
-              core.setFailed('GraphQL mutation returned no item ID — issue may not have been added');
-              return;
+            const existingItem = existingQuery.node.projectItems?.nodes.find(
+              item => item.project.number === projectNumber
+            );
+
+            let itemId;
+            if (existingItem) {
+              itemId = existingItem.id;
+              core.info(`Issue #${issue.number} already on project "${project.title}" — using existing item`);
+              core.summary.addRaw(`✓ Issue #${issue.number} already on project "${project.title}" (#${projectNumber})\n`);
+            } else {
+              const mutation = await github.graphql(`
+                mutation($projectId: ID!, $contentId: ID!) {
+                  addProjectV2ItemById(input: {projectId: $projectId, contentId: $contentId}) {
+                    item {
+                      id
+                    }
+                  }
+                }
+              `, { projectId: project.id, contentId: issue.node_id });
+
+              itemId = mutation.addProjectV2ItemById?.item?.id;
+              if (!itemId) {
+                core.setFailed('GraphQL mutation returned no item ID — issue may not have been added');
+                return;
+              }
+
+              core.info(`Added issue #${issue.number} to project "${project.title}"`);
+              core.summary.addRaw(`✓ Added issue #${issue.number} to project "${project.title}" (#${projectNumber})\n`);
             }
-
-            core.info(`Added issue #${issue.number} to project "${project.title}"`);
-            core.summary.addRaw(`✓ Added issue #${issue.number} to project "${project.title}" (#${projectNumber})\n`);
 
             // Set default Status if provided
             const defaultStatus = '${{ inputs.default-status }}';
