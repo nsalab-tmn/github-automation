@@ -55,7 +55,7 @@ name: Housekeeping
 
 on:
   issues:
-    types: [opened, reopened, closed]
+    types: [opened]
   pull_request:
     types: [opened, synchronize, edited, labeled, unlabeled, reopened, ready_for_review, review_requested, closed]
   pull_request_review:
@@ -79,7 +79,6 @@ jobs:
   project-sync:
     if: >-
       github.event_name == 'pull_request_review'
-      || (github.event_name == 'issues' && github.event.action != 'opened')
       || (github.event_name == 'pull_request'
           && contains(fromJSON('["opened","reopened","ready_for_review","review_requested","closed"]'),
                       github.event.action))
@@ -139,5 +138,5 @@ Pinned to major versions for stability:
 - **GITHUB_TOKEN scope**: The default `GITHUB_TOKEN` cannot add items to GitHub Projects (org-level). A PAT or GitHub App token with `project` scope is required for `reusable-auto-project`.
 - **Workflow call depth**: GitHub allows max 10 levels of reusable workflow nesting (increased from 4). Keep it flat — callers call this repo directly, no chaining.
 - **Reusable workflow bootstrap**: When introducing a new reusable workflow, don't add the caller job in the same PR. The `@main` reference will fail because the workflow doesn't exist on main yet, which breaks the entire workflow file (all jobs fail, not just the new one). Merge the workflow first, then add the caller in a follow-up commit.
-- **project-sync vs auto-project**: Separate workflows with separate concerns. `auto-project` runs on `issues: [opened]` to add new issues to the board and set initial Status/Type. `project-sync` handles ongoing status transitions from PR and issue lifecycle events. Don't combine them.
+- **project-sync + Layer 1 hybrid**: `project-sync` is designed to work alongside Layer 1 built-in project workflows. Layer 1 handles common transitions (PR linked → In Review, item closed → Done, item reopened → Backlog) with clean single-event timelines. `project-sync` handles only transitions Layer 1 cannot: draft PRs, ready_for_review, review re-requests after changes, and PR closed without merge. Both must be active for full lifecycle coverage.
 - **`pull_request_review` event**: Only fires on `submitted`, not on dismissal. The `changes_requested` state moves the linked issue back to In Progress. The `approved` state is a no-op (stays In Review until merged).

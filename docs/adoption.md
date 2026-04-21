@@ -31,7 +31,7 @@ run-name: "[${{github.run_number}}] Housekeeping [${{github.event_name}}]"
 
 on:
   issues:
-    types: [opened, reopened, closed]
+    types: [opened]
   pull_request:
     types: [opened, synchronize, edited, labeled, unlabeled, reopened, ready_for_review, review_requested, closed]
   pull_request_review:
@@ -61,7 +61,6 @@ jobs:
   project-sync:
     if: >-
       github.event_name == 'pull_request_review'
-      || (github.event_name == 'issues' && github.event.action != 'opened')
       || (github.event_name == 'pull_request'
           && contains(fromJSON('["opened","reopened","ready_for_review","review_requested","closed"]'),
                       github.event.action))
@@ -101,7 +100,7 @@ jobs:
 
 > **Important:** If using both `auto-label` and `pr-validate`, add `needs: auto-label` to `pr-validate`. Without this, the jobs race and validation may fail because labels haven't been applied yet.
 
-> **Note on `project-sync` and `auto-project`:** These workflows are complementary — `auto-project` adds new issues to the board on `issues.opened`, while `project-sync` handles status transitions on subsequent events. They don't overlap: `project-sync` explicitly skips `issues.opened`. However, `project-sync` requires the issue to already be on the board (it won't add it). This is naturally ordered by the issue-first workflow — the issue exists on the board before any PR referencing it is opened. If `project-sync` can't find an item on the board, it logs a warning and skips.
+> **Note on `project-sync`, `auto-project`, and Layer 1:** `project-sync` works alongside Layer 1 built-in project workflows. Layer 1 handles the common transitions cleanly (PR linked to issue → In Review, item closed → Done, item reopened → Backlog). `project-sync` handles only what Layer 1 cannot: draft PRs → In Progress, ready_for_review → In Review, review re-requested → In Review, changes requested → In Progress, and PR closed without merge → Backlog. Layer 1 workflows must be enabled on the project board — see the adoption issue for setup instructions.
 
 ### Stale check (separate caller)
 
