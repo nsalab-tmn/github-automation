@@ -53,6 +53,7 @@ github-automation/
 | `reusable-auto-project` | Add issues to GitHub Projects board | Active |
 | `reusable-project-sync` | Sync project board Status from issue/PR lifecycle | Active |
 | `reusable-auto-label` | Label PRs by changed file paths | Active |
+| `reusable-pr-size` | Label PRs by lines changed (XS/S/M/L/XL) | Active |
 | `reusable-pr-validate` | Validate PR structure and linked issue | Active |
 | `reusable-stale-check` | Label and manage inactive issues | Active |
 | `reusable-pinned-sync` | Auto-update pinned context issue from repo state | Active |

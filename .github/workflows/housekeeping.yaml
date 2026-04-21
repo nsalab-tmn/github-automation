@@ -25,9 +25,13 @@ jobs:
           "documentation": ["docs/**", "*.md"]
         }
 
-  pr-validate:
-    needs: auto-label
+  pr-size:
     if: github.event_name == 'pull_request'
+    uses: nsalab-tmn/github-automation/.github/workflows/reusable-pr-size.yaml@main
+
+  pr-validate:
+    needs: [auto-label, pr-size]
+    if: github.event_name == 'pull_request' && always()
     uses: nsalab-tmn/github-automation/.github/workflows/reusable-pr-validate.yaml@main
     with:
       require-issue: true

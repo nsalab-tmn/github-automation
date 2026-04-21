@@ -83,9 +83,15 @@ jobs:
           "documentation": ["docs/**", "*.md"]
         }
 
-  pr-validate:
-    needs: auto-label  # must run after auto-label so labels are present for validation
+  pr-size:
     if: github.event_name == 'pull_request'
+    uses: nsalab-tmn/github-automation/.github/workflows/reusable-pr-size.yaml@main
+    with:
+      exclude-patterns: '["*.lock"]'
+
+  pr-validate:
+    needs: [auto-label, pr-size]
+    if: github.event_name == 'pull_request' && always()
     uses: nsalab-tmn/github-automation/.github/workflows/reusable-pr-validate.yaml@main
     with:
       require-issue: true
@@ -184,6 +190,7 @@ For `reusable-auto-project`:
 | `reusable-auto-project` | Adds issues to a GitHub Projects board, sets Type field | `project-number` (required), `type-mapping` (optional, JSON) | `token` (required) |
 | `reusable-project-sync` | Syncs project board Status based on issue/PR lifecycle | `project-number` (required), `status-backlog`, `status-in-progress`, `status-in-review`, `status-done` (all optional) | `token` (required) |
 | `reusable-auto-label` | Labels PRs based on changed file paths | `label-config` (required, JSON) | — |
+| `reusable-pr-size` | Labels PRs by lines changed (XS/S/M/L/XL) | `size-xs`, `size-s`, `size-m`, `size-l` (all optional), `exclude-patterns` (optional, JSON) | — |
 | `reusable-pr-validate` | Validates PR has linked issue, description, labels | `require-issue`, `require-labels`, `require-description` (all optional, default `true`) | — |
 | `reusable-stale-check` | Labels inactive issues as stale, optionally closes them | `days-before-stale`, `days-before-close`, `stale-label`, `exempt-labels`, `exempt-assignees` (all optional) | — |
 | `reusable-pinned-sync` | Auto-updates pinned issue checklist, remaining, and completed sections | `pinned-label` (optional, default `pinned`) | — |
@@ -204,6 +211,8 @@ Each job in the caller is independent — include only what you need. The caller
 - `status-in-review`: Status column name for items under review. Default `In Review`.
 - `status-done`: Status column name for completed items. Default `Done`.
 - `type-mapping`: JSON mapping of issue label names to project Type field option names. First matching label wins. Example: `{"bug": "Bug", "enhancement": "Feature"}`. Omit to skip type assignment.
+- `size-xs`, `size-s`, `size-m`, `size-l`: upper bounds for each size bucket (inclusive). Defaults: 9, 49, 199, 499. Anything above `size-l` is XL.
+- `exclude-patterns`: JSON array of glob patterns for files to exclude from the line count (e.g., `["*.lock", "generated/**"]`). Omit to count all files.
 - `label-config`: JSON mapping of label names to arrays of glob patterns. Labels are applied additively (never removed). **Important:** if using `require-labels: true` in pr-validate, every PR must match at least one pattern — ensure your config covers all directories in the repo. Common patterns:
   - `"ci-cd": [".github/**"]`
   - `"documentation": ["docs/**", "*.md"]`
