@@ -74,7 +74,8 @@ jobs:
     with:
       project-number: 3
     secrets:
-      token: ${{ secrets.PROJECT_TOKEN }}
+      app-id: ${{ secrets.APP_ID }}
+      app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
   project-sync:
     if: >-
@@ -86,7 +87,8 @@ jobs:
     with:
       project-number: 3
     secrets:
-      token: ${{ secrets.PROJECT_TOKEN }}
+      app-id: ${{ secrets.APP_ID }}
+      app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
 ```
 
 ### Inputs convention
@@ -135,7 +137,7 @@ Pinned to major versions for stability:
 ## Known gotchas
 
 - **Reusable workflow secrets**: Callers must explicitly pass secrets — they are not inherited. Use `secrets: inherit` only if the caller trusts this repo with all its secrets.
-- **GITHUB_TOKEN scope**: The default `GITHUB_TOKEN` cannot add items to GitHub Projects (org-level). A PAT or GitHub App token with `project` scope is required for `reusable-auto-project`.
+- **GITHUB_TOKEN scope**: The default `GITHUB_TOKEN` cannot add items to GitHub Projects (org-level). The `nsalab-automation` GitHub App with `organization_projects: write` permission is used for `reusable-auto-project` and `reusable-project-sync`. Callers pass `APP_ID` and `APP_PRIVATE_KEY` secrets; the reusable workflow generates a short-lived installation token internally.
 - **Workflow call depth**: GitHub allows max 10 levels of reusable workflow nesting (increased from 4). Keep it flat — callers call this repo directly, no chaining.
 - **Reusable workflow bootstrap**: When introducing a new reusable workflow, don't add the caller job in the same PR. The `@main` reference will fail because the workflow doesn't exist on main yet, which breaks the entire workflow file (all jobs fail, not just the new one). Merge the workflow first, then add the caller in a follow-up commit.
 - **project-sync + Layer 1 hybrid**: `project-sync` is designed to work alongside Layer 1 built-in project workflows. Layer 1 handles common transitions (PR linked → In Review, item closed → Done, item reopened → Backlog) with clean single-event timelines. `project-sync` handles only transitions Layer 1 cannot: draft PRs, ready_for_review, review re-requests after changes, and PR closed without merge. Both must be active for full lifecycle coverage.

@@ -28,18 +28,29 @@ on:
         type: string
         default: 'Done'
     secrets:
-      token:
-        description: 'PAT or GitHub App token with project scope'
+      app-id:
+        description: 'GitHub App ID for nsalab-automation'
+        required: true
+      app-private-key:
+        description: 'GitHub App private key for nsalab-automation'
         required: true
 
 jobs:
   project-sync:
     runs-on: ubuntu-latest
     steps:
+      - name: Generate app token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.app-id }}
+          private-key: ${{ secrets.app-private-key }}
+          owner: ${{ github.repository_owner }}
+
       - name: Sync project status
         uses: actions/github-script@v8
         with:
-          github-token: ${{ secrets.token }}
+          github-token: ${{ steps.app-token.outputs.token }}
           script: |
             const org = context.repo.owner;
             const repo = context.repo.repo;
