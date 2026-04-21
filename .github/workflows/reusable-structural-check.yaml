@@ -14,10 +14,15 @@ on:
         type: string
         default: 'housekeeping.yaml,stale-check.yaml,pinned-sync.yaml'
       required-labels:
-        description: 'Comma-separated labels that must exist in the repo'
+        description: 'Comma-separated org-wide labels that must exist'
         required: false
         type: string
-        default: 'bug,enhancement,pinned,stale,in-progress'
+        default: 'bug,enhancement,pinned,stale,in-progress,compliance,merge-conflict'
+      repo-labels:
+        description: 'Comma-separated repo-specific labels (from label-config, etc.)'
+        required: false
+        type: string
+        default: ''
       pinned-label:
         description: 'Label identifying the pinned context issue for posting results'
         required: false
@@ -46,6 +51,7 @@ jobs:
             const requiredFiles = '${{ inputs.required-files }}'.split(',').map(f => f.trim()).filter(Boolean);
             const requiredWorkflows = '${{ inputs.required-workflows }}'.split(',').map(f => f.trim()).filter(Boolean);
             const requiredLabels = '${{ inputs.required-labels }}'.split(',').map(l => l.trim()).filter(Boolean);
+            const repoLabels = '${{ inputs.repo-labels }}'.split(',').map(l => l.trim()).filter(Boolean);
             const pinnedLabel = '${{ inputs.pinned-label }}';
             const complianceLabel = '${{ inputs.compliance-label }}';
 
@@ -79,16 +85,25 @@ jobs:
 
             // --- Check required labels ---
 
-            const { data: repoLabels } = await github.rest.issues.listLabelsForRepo({
+            const { data: existingLabels } = await github.rest.issues.listLabelsForRepo({
               owner, repo, per_page: 100,
             });
-            const labelNames = repoLabels.map(l => l.name);
+            const labelNames = existingLabels.map(l => l.name);
 
             for (const label of requiredLabels) {
               if (labelNames.includes(label)) {
-                results.push({ check: 'Label', item: label, status: '✅' });
+                results.push({ check: 'Label (org)', item: label, status: '✅' });
               } else {
-                results.push({ check: 'Label', item: label, status: '❌ missing' });
+                results.push({ check: 'Label (org)', item: label, status: '❌ missing' });
+                hasFailures = true;
+              }
+            }
+
+            for (const label of repoLabels) {
+              if (labelNames.includes(label)) {
+                results.push({ check: 'Label (repo)', item: label, status: '✅' });
+              } else {
+                results.push({ check: 'Label (repo)', item: label, status: '❌ missing' });
                 hasFailures = true;
               }
             }
