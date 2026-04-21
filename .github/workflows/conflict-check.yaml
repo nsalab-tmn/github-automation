@@ -1,0 +1,13 @@
+name: conflict-check
+run-name: "[${{github.run_number}}] Conflict check [${{github.event_name}}]"
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+jobs:
+  conflict-check:
+    uses: nsalab-tmn/github-automation/.github/workflows/reusable-conflict-check.yaml@main
