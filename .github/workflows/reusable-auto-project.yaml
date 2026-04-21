@@ -17,6 +17,11 @@ on:
         required: false
         type: string
         default: ''
+      default-type:
+        description: 'Default issue type when no label matches type-mapping (e.g., Task)'
+        required: false
+        type: string
+        default: ''
     secrets:
       app-id:
         description: 'GitHub App ID for nsalab-automation'
@@ -179,18 +184,29 @@ jobs:
               }
             }
 
-            // Set native issue type if mapping is provided
+            // Set native issue type from label mapping or default
             const typeMappingRaw = `${{ inputs.type-mapping }}`;
-            if (!typeMappingRaw) {
+            const defaultType = '${{ inputs.default-type }}';
+            if (!typeMappingRaw && !defaultType) {
               await core.summary.write();
               return;
             }
 
-            let typeMapping;
-            try {
-              typeMapping = JSON.parse(typeMappingRaw);
-            } catch (e) {
-              core.warning(`Invalid type-mapping JSON: ${e.message} — skipping type assignment`);
+            let typeMapping = {};
+            if (typeMappingRaw) {
+              try {
+                typeMapping = JSON.parse(typeMappingRaw);
+              } catch (e) {
+                core.warning(`Invalid type-mapping JSON: ${e.message} — skipping type assignment`);
+                await core.summary.write();
+                return;
+              }
+            }
+
+            // Skip if issue already has a type set
+            if (issue.issue_type) {
+              core.info(`Issue already has type "${issue.issue_type.name}" — not overriding`);
+              core.summary.addRaw(`✓ Issue type already set: "${issue.issue_type.name}"\n`);
               await core.summary.write();
               return;
             }
@@ -209,10 +225,15 @@ jobs:
             }
 
             if (!targetType) {
-              core.info('No labels matched type-mapping — skipping type assignment');
-              core.summary.addRaw('No labels matched type-mapping — Type not set\n');
-              await core.summary.write();
-              return;
+              if (defaultType) {
+                targetType = defaultType;
+                matchedLabel = '(default)';
+              } else {
+                core.info('No labels matched type-mapping and no default-type — skipping type assignment');
+                core.summary.addRaw('No labels matched type-mapping — Type not set\n');
+                await core.summary.write();
+                return;
+              }
             }
 
             // Get available native issue types from the repo

@@ -1,0 +1,201 @@
+name: Set issue field defaults
+
+on:
+  workflow_call:
+    inputs:
+      project-number:
+        description: 'GitHub Projects board number (org-level)'
+        required: true
+        type: number
+      defaults-mapping:
+        description: 'JSON mapping of issue type → field defaults'
+        required: false
+        type: string
+        default: '{"Bug":{"Priority":"P1","Size":"S"},"Feature":{"Priority":"P2","Size":"M"},"Task":{"Priority":"P2","Size":"S"}}'
+    secrets:
+      app-id:
+        description: 'GitHub App ID for nsalab-automation'
+        required: true
+      app-private-key:
+        description: 'GitHub App private key for nsalab-automation'
+        required: true
+
+jobs:
+  issue-defaults:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate app token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.app-id }}
+          private-key: ${{ secrets.app-private-key }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Set field defaults
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const issue = context.payload.issue;
+
+            if (!issue) {
+              core.warning('No issue in payload — skipping');
+              return;
+            }
+
+            const org = context.repo.owner;
+            const repo = context.repo.repo;
+            const projectNumber = ${{ inputs.project-number }};
+
+            // Parse defaults mapping
+            let defaultsMapping;
+            try {
+              defaultsMapping = JSON.parse(`${{ inputs.defaults-mapping }}`);
+            } catch (e) {
+              core.warning(`Invalid defaults-mapping JSON: ${e.message} — skipping`);
+              return;
+            }
+
+            // Determine issue type
+            const issueType = issue.issue_type?.name;
+            if (!issueType) {
+              core.info('Issue has no type set — skipping defaults');
+              return;
+            }
+
+            const defaults = defaultsMapping[issueType];
+            if (!defaults) {
+              core.info(`No defaults configured for type "${issueType}" — skipping`);
+              return;
+            }
+
+            core.info(`Issue #${issue.number} type "${issueType}" — applying defaults: ${JSON.stringify(defaults)}`);
+
+            // Find the issue's project item
+            const itemQuery = await github.graphql(`
+              query($issueId: ID!) {
+                node(id: $issueId) {
+                  ... on Issue {
+                    projectItems(first: 50) {
+                      nodes {
+                        id
+                        project {
+                          number
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            `, { issueId: issue.node_id });
+
+            const projectItem = itemQuery.node.projectItems?.nodes.find(
+              item => item.project.number === projectNumber
+            );
+
+            if (!projectItem) {
+              core.warning(`Issue #${issue.number} not on project #${projectNumber} — skipping`);
+              return;
+            }
+
+            // Get project fields
+            const projectQuery = await github.graphql(`
+              query($org: String!, $number: Int!) {
+                organization(login: $org) {
+                  projectV2(number: $number) {
+                    id
+                    fields(first: 50) {
+                      nodes {
+                        ... on ProjectV2SingleSelectField {
+                          id
+                          name
+                          options {
+                            id
+                            name
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            `, { org, number: projectNumber });
+
+            const project = projectQuery.organization.projectV2;
+            if (!project) {
+              core.setFailed(`Project #${projectNumber} not found`);
+              return;
+            }
+
+            const summaryLines = [];
+
+            // Set each default field value (only if currently empty)
+            for (const [fieldName, targetValue] of Object.entries(defaults)) {
+              const field = project.fields.nodes.find(
+                f => f.name && f.name.toLowerCase() === fieldName.toLowerCase()
+              );
+
+              if (!field) {
+                core.warning(`Field "${fieldName}" not found on project — skipping`);
+                summaryLines.push(`⚠ Field "${fieldName}" not found`);
+                continue;
+              }
+
+              // Check current value
+              const currentQuery = await github.graphql(`
+                query($itemId: ID!, $fieldName: String!) {
+                  node(id: $itemId) {
+                    ... on ProjectV2Item {
+                      fieldValueByName(name: $fieldName) {
+                        ... on ProjectV2ItemFieldSingleSelectValue {
+                          name
+                        }
+                      }
+                    }
+                  }
+                }
+              `, { itemId: projectItem.id, fieldName: fieldName });
+
+              const currentValue = currentQuery.node.fieldValueByName?.name;
+              if (currentValue) {
+                core.info(`${fieldName} already set to "${currentValue}" — not overriding`);
+                summaryLines.push(`✓ ${fieldName}: "${currentValue}" (already set)`);
+                continue;
+              }
+
+              // Find target option
+              const option = field.options.find(o => o.name === targetValue);
+              if (!option) {
+                core.warning(`Option "${targetValue}" not found for field "${fieldName}" — available: ${field.options.map(o => o.name).join(', ')}`);
+                summaryLines.push(`⚠ ${fieldName}: "${targetValue}" not found`);
+                continue;
+              }
+
+              // Set the value
+              await github.graphql(`
+                mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
+                  updateProjectV2ItemFieldValue(input: {
+                    projectId: $projectId
+                    itemId: $itemId
+                    fieldId: $fieldId
+                    value: { singleSelectOptionId: $optionId }
+                  }) {
+                    projectV2Item { id }
+                  }
+                }
+              `, {
+                projectId: project.id,
+                itemId: projectItem.id,
+                fieldId: field.id,
+                optionId: option.id,
+              });
+
+              core.info(`Set ${fieldName} to "${targetValue}"`);
+              summaryLines.push(`✓ ${fieldName}: → "${targetValue}" (default for ${issueType})`);
+            }
+
+            if (summaryLines.length > 0) {
+              core.summary.addRaw(`### Issue Defaults\n\nIssue #${issue.number} (${issueType}):\n\n${summaryLines.join('\n')}\n`);
+            }
+            await core.summary.write();

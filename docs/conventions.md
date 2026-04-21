@@ -39,6 +39,7 @@ Examples: `reusable-auto-assign.yaml`, `reusable-auto-project.yaml`, `reusable-s
 | `reusable-auto-project` | `issues` | `project-number`, `default-status`, `type-mapping` (JSON) | Adds issue to a GitHub Projects board, sets Status and Type |
 | `reusable-project-sync` | `issues`, `pull_request`, `pull_request_review` | `project-number`, `status-backlog`, `status-in-progress`, `status-in-review`, `status-done` | Syncs issue Status on project board based on PR/issue lifecycle events |
 | `reusable-auto-label` | `pull_request` | `label-config` (JSON) | Labels PRs based on changed file paths |
+| `reusable-issue-defaults` | `issues` | `project-number`, `defaults-mapping` (JSON) | Sets Priority and Size defaults based on issue type |
 | `reusable-branch-validate` | `pull_request` | `branch-pattern` (regex), `exempt-authors` | Validates branch name convention and linked issue |
 | `reusable-pr-size` | `pull_request` | `size-xs`, `size-s`, `size-m`, `size-l`, `exclude-patterns` (JSON) | Labels PRs by lines changed (XS/S/M/L/XL) |
 | `reusable-pr-validate` | `pull_request` | `require-issue`, `require-labels`, `require-description` | Validates PR has linked issue, description, labels |
@@ -60,7 +61,7 @@ name: Housekeeping
 
 on:
   issues:
-    types: [opened]
+    types: [opened, typed]
   pull_request:
     types: [opened, synchronize, edited, labeled, unlabeled, ready_for_review, review_requested, closed]
   pull_request_review:
@@ -76,6 +77,15 @@ jobs:
   auto-project:
     if: github.event_name == 'issues' && github.event.action == 'opened'
     uses: nsalab-tmn/github-automation/.github/workflows/reusable-auto-project.yaml@main
+    with:
+      project-number: 3
+    secrets:
+      app-id: ${{ secrets.APP_ID }}
+      app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+  issue-defaults:
+    if: github.event_name == 'issues'
+    uses: nsalab-tmn/github-automation/.github/workflows/reusable-issue-defaults.yaml@main
     with:
       project-number: 3
     secrets:
