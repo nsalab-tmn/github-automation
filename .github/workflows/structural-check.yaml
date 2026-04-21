@@ -9,3 +9,5 @@ on:
 jobs:
   structural-check:
     uses: nsalab-tmn/github-automation/.github/workflows/reusable-structural-check.yaml@main
+    with:
+      repo-labels: 'ci-cd,documentation'
