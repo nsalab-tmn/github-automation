@@ -152,6 +152,29 @@ jobs:
 
 > **Note:** `days-before-close` only applies to draft PRs. Non-draft stale PRs are never auto-closed — the label serves as a signal.
 
+### Compliance check (separate caller)
+
+Detects policy violations: direct pushes to main (bypassing PRs) and PRs merged without passing validation. Creates alert issues labeled `compliance`. Compensates for branch protection rules unavailable on the free GitHub tier:
+
+```yaml
+# .github/workflows/compliance-check.yaml
+name: compliance-check
+run-name: "[${{github.run_number}}] Compliance check [${{github.event_name}}]"
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [closed]
+
+jobs:
+  compliance-check:
+    if: >-
+      (github.event_name == 'push')
+      || (github.event_name == 'pull_request' && github.event.pull_request.merged)
+    uses: nsalab-tmn/github-automation/.github/workflows/reusable-compliance-check.yaml@main
+```
+
 ### Conflict check (separate caller)
 
 Checks open PRs for merge conflicts after pushes to main. Also runs weekly as a fallback:
@@ -241,6 +264,7 @@ If org-level secrets are already configured, no per-repo setup is needed.
 | `reusable-branch-validate` | Validates branch name convention and linked issue | `branch-pattern` (optional, regex), `exempt-authors` (optional) | — |
 | `reusable-pr-size` | Labels PRs by lines changed (XS/S/M/L/XL) | `size-xs`, `size-s`, `size-m`, `size-l` (all optional), `exclude-patterns` (optional, JSON) | — |
 | `reusable-pr-validate` | Validates PR has linked issue, description, labels | `require-issue`, `require-labels`, `require-description` (all optional, default `true`) | — |
+| `reusable-compliance-check` | Detects direct pushes and merges without validation | `require-pr`, `require-checks`, `exempt-authors`, `compliance-label` (all optional) | — |
 | `reusable-conflict-check` | Detects merge conflicts on open PRs and labels them | `conflict-label` (optional, default `merge-conflict`) | — |
 | `reusable-stale-check` | Labels inactive issues as stale, optionally closes them | `days-before-stale`, `days-before-close`, `stale-label`, `exempt-labels`, `exempt-assignees` (all optional) | — |
 | `reusable-stale-pr` | Labels inactive PRs as stale, optionally closes drafts | `days-before-stale`, `days-before-close`, `stale-label`, `exempt-labels`, `exempt-authors` (all optional) | — |

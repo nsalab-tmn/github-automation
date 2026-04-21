@@ -1,0 +1,188 @@
+name: Compliance check
+
+on:
+  workflow_call:
+    inputs:
+      require-pr:
+        description: 'Alert on direct pushes to main (no associated PR)'
+        required: false
+        type: boolean
+        default: true
+      require-checks:
+        description: 'Alert on PRs merged without passing PR Validation'
+        required: false
+        type: boolean
+        default: true
+      exempt-authors:
+        description: 'Comma-separated authors exempt from direct push check'
+        required: false
+        type: string
+        default: 'github-actions[bot],nsalab-automation[bot]'
+      compliance-label:
+        description: 'Label for compliance alert issues'
+        required: false
+        type: string
+        default: 'compliance'
+
+permissions:
+  issues: write
+  pull-requests: read
+  statuses: read
+  contents: read
+
+jobs:
+  compliance-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check compliance
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const requirePr = ${{ inputs.require-pr }};
+            const requireChecks = ${{ inputs.require-checks }};
+            const exemptAuthors = '${{ inputs.exempt-authors }}'.split(',').map(a => a.trim()).filter(Boolean);
+            const complianceLabel = '${{ inputs.compliance-label }}';
+
+            const eventName = context.eventName;
+
+            // --- Direct push detection ---
+
+            if (eventName === 'push' && requirePr) {
+              const headCommit = context.payload.head_commit;
+              if (!headCommit) {
+                core.info('No head_commit in payload — skipping');
+                return;
+              }
+
+              const pusher = context.payload.pusher?.name || context.actor;
+
+              // Check if pusher is exempt
+              if (exemptAuthors.includes(pusher) || exemptAuthors.includes(context.actor)) {
+                core.info(`Pusher "${pusher}" is exempt — skipping`);
+                return;
+              }
+
+              // Check if this commit is associated with a merged PR
+              const { data: associatedPRs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+                owner, repo,
+                commit_sha: headCommit.id,
+              });
+
+              const mergedPR = associatedPRs.find(pr => pr.merged_at && pr.merge_commit_sha === headCommit.id);
+
+              if (!mergedPR) {
+                // Direct push — create alert issue
+                core.warning(`Direct push to main detected by ${pusher}`);
+
+                await github.rest.issues.create({
+                  owner, repo,
+                  title: `Compliance: direct push to main by ${pusher}`,
+                  body: [
+                    `### Policy violation: direct push to main`,
+                    ``,
+                    `A commit was pushed directly to \`main\` without a pull request.`,
+                    ``,
+                    `| Field | Value |`,
+                    `|-------|-------|`,
+                    `| **Pusher** | @${pusher} |`,
+                    `| **Commit** | [\`${headCommit.id.substring(0, 7)}\`](${headCommit.url}) |`,
+                    `| **Message** | ${headCommit.message.split('\n')[0]} |`,
+                    `| **Timestamp** | ${headCommit.timestamp} |`,
+                    ``,
+                    `Please use the PR workflow for all changes to \`main\`.`,
+                  ].join('\n'),
+                  labels: [complianceLabel],
+                });
+
+                core.summary.addRaw(`### Compliance\n\n⚠ Direct push to main by ${pusher} — alert issue created`);
+                await core.summary.write();
+                return;
+              }
+
+              core.info(`Commit ${headCommit.id.substring(0, 7)} is from merged PR #${mergedPR.number} — OK`);
+              core.summary.addRaw(`### Compliance\n\n✓ Push from merged PR #${mergedPR.number}`);
+              await core.summary.write();
+              return;
+            }
+
+            // --- Merge without checks detection ---
+
+            if (eventName === 'pull_request' && requireChecks) {
+              const pr = context.payload.pull_request;
+              if (!pr || !pr.merged) {
+                core.info('PR not merged — skipping');
+                return;
+              }
+
+              // Get commit statuses for the merge commit's head
+              const { data: status } = await github.rest.repos.getCombinedStatusForRef({
+                owner, repo,
+                ref: pr.head.sha,
+              });
+
+              const prValidation = status.statuses.find(s => s.context === 'PR Validation');
+
+              if (!prValidation) {
+                core.warning(`PR #${pr.number} merged without PR Validation status`);
+
+                await github.rest.issues.create({
+                  owner, repo,
+                  title: `Compliance: PR #${pr.number} merged without validation`,
+                  body: [
+                    `### Policy violation: merge without PR Validation`,
+                    ``,
+                    `PR #${pr.number} was merged without a passing PR Validation check.`,
+                    ``,
+                    `| Field | Value |`,
+                    `|-------|-------|`,
+                    `| **PR** | #${pr.number} |`,
+                    `| **Title** | ${pr.title} |`,
+                    `| **Author** | @${pr.user.login} |`,
+                    `| **Merged by** | @${pr.merged_by?.login || 'unknown'} |`,
+                    `| **Validation status** | not found |`,
+                    ``,
+                    `All PRs should pass PR Validation before merging.`,
+                  ].join('\n'),
+                  labels: [complianceLabel],
+                });
+
+                core.summary.addRaw(`### Compliance\n\n⚠ PR #${pr.number} merged without PR Validation — alert issue created`);
+                await core.summary.write();
+                return;
+              }
+
+              if (prValidation.state !== 'success') {
+                core.warning(`PR #${pr.number} merged with PR Validation: ${prValidation.state}`);
+
+                await github.rest.issues.create({
+                  owner, repo,
+                  title: `Compliance: PR #${pr.number} merged with failed validation`,
+                  body: [
+                    `### Policy violation: merge with failed PR Validation`,
+                    ``,
+                    `PR #${pr.number} was merged but PR Validation was \`${prValidation.state}\`.`,
+                    ``,
+                    `| Field | Value |`,
+                    `|-------|-------|`,
+                    `| **PR** | #${pr.number} |`,
+                    `| **Title** | ${pr.title} |`,
+                    `| **Author** | @${pr.user.login} |`,
+                    `| **Merged by** | @${pr.merged_by?.login || 'unknown'} |`,
+                    `| **Validation status** | \`${prValidation.state}\` |`,
+                    ``,
+                    `All PRs should pass PR Validation before merging.`,
+                  ].join('\n'),
+                  labels: [complianceLabel],
+                });
+
+                core.summary.addRaw(`### Compliance\n\n⚠ PR #${pr.number} merged with validation ${prValidation.state} — alert issue created`);
+                await core.summary.write();
+                return;
+              }
+
+              core.info(`PR #${pr.number} merged with PR Validation: success — OK`);
+              core.summary.addRaw(`### Compliance\n\n✓ PR #${pr.number} — validation passed`);
+              await core.summary.write();
+            }
