@@ -1,0 +1,220 @@
+name: drift-detect
+run-name: "[${{github.run_number}}] Drift detect [${{github.event_name}}]"
+
+on:
+  schedule:
+    - cron: '0 10 * * 1'  # Monday 10am UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  drift-detect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Generate app token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: nsalab-tmn
+
+      - name: Install Python dependencies
+        run: pip install anthropic pyyaml
+
+      - name: Parse project config
+        id: config
+        run: |
+          python3 -c "
+          import yaml, json
+          with open('config/drift-projects.yaml') as f:
+              config = yaml.safe_load(f)
+          print(json.dumps(config['projects']))
+          " > projects.json
+          echo "count=$(jq length projects.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Gather and analyze each project
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ADOPTION_GUIDE: docs/adoption.md
+        run: |
+          PROJECT_COUNT=$(jq length projects.json)
+          ALL_FINDINGS="[]"
+
+          for i in $(seq 0 $((PROJECT_COUNT - 1))); do
+            PROJECT=$(jq ".[$i]" projects.json)
+            PROJECT_NAME=$(echo "$PROJECT" | jq -r '.name')
+            echo "::group::Gathering state for project: ${PROJECT_NAME}"
+
+            export PROJECT_CONFIG="$PROJECT"
+            ./scripts/gather-drift-state.sh > "drift-state-${PROJECT_NAME}.json"
+
+            echo "::endgroup::"
+            echo "::group::Analyzing project: ${PROJECT_NAME}"
+
+            python3 ./scripts/drift-detect.py \
+              "drift-state-${PROJECT_NAME}.json" \
+              prompts/drift-review.md \
+              schemas/drift-findings.json \
+              > "findings-${PROJECT_NAME}.json"
+
+            cat "findings-${PROJECT_NAME}.json"
+            ALL_FINDINGS=$(jq --slurpfile f "findings-${PROJECT_NAME}.json" '. + $f' <<< "$ALL_FINDINGS")
+
+            echo "::endgroup::"
+          done
+
+          echo "$ALL_FINDINGS" > all-findings.json
+
+          # Step summary
+          echo "## Drift Detection Results" >> "$GITHUB_STEP_SUMMARY"
+          for i in $(seq 0 $((PROJECT_COUNT - 1))); do
+            PROJECT_NAME=$(jq -r ".[$i].name" projects.json)
+            if [ -f "findings-${PROJECT_NAME}.json" ]; then
+              FINDING_COUNT=$(jq '.findings | length' "findings-${PROJECT_NAME}.json")
+              SUMMARY=$(jq -r '.summary' "findings-${PROJECT_NAME}.json")
+              echo "### ${PROJECT_NAME}: ${FINDING_COUNT} finding(s)" >> "$GITHUB_STEP_SUMMARY"
+              echo "${SUMMARY}" >> "$GITHUB_STEP_SUMMARY"
+              echo "" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
+
+      - name: Execute actions
+        if: always() && hashFiles('all-findings.json') != ''
+        uses: actions/github-script@v8
+        env:
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
+        with:
+          script: |
+            const fs = require('fs');
+            const allFindings = JSON.parse(fs.readFileSync('all-findings.json', 'utf8'));
+            const appOctokit = github.getOctokit(process.env.APP_TOKEN);
+
+            let totalCreated = 0;
+            let totalSkipped = 0;
+
+            for (const projectFindings of allFindings) {
+              const project = projectFindings.project;
+
+              for (const finding of projectFindings.findings) {
+                const [owner, repo] = finding.repo.split('/');
+                const findingId = `${finding.type}:${finding.convention}`.replace(/[^a-z0-9:-]/gi, '-').toLowerCase().slice(0, 80);
+                const marker = `<!-- drift:${findingId} -->`;
+
+                // Check for existing open issue with same marker
+                const existing = await appOctokit.rest.issues.listForRepo({
+                  owner, repo,
+                  state: 'open',
+                  labels: 'compliance',
+                  per_page: 100,
+                });
+
+                const duplicate = existing.data.find(i => i.body && i.body.includes(marker));
+                if (duplicate) {
+                  core.info(`Skipped duplicate: ${finding.repo} — ${finding.convention} (existing #${duplicate.number})`);
+                  totalSkipped++;
+                  continue;
+                }
+
+                // Create issue
+                const severityEmoji = { high: '🔴', medium: '🟡', low: '🔵' }[finding.severity] || '⚪';
+                const body = [
+                  marker,
+                  `### Convention ${finding.type}: ${finding.convention}`,
+                  '',
+                  `**Severity:** ${severityEmoji} ${finding.severity}`,
+                  `**Type:** ${finding.type}`,
+                  '',
+                  `**Expected:** ${finding.expected}`,
+                  '',
+                  `**Actual:** ${finding.actual}`,
+                  '',
+                  `**Recommendation:** ${finding.recommendation}`,
+                  '',
+                  `---`,
+                  `*Created by convention drift detector ([nsalab-automation](https://github.com/apps/nsalab-automation)) — [source](https://github.com/nsalab-tmn/github-automation/issues/51)*`,
+                ].join('\n');
+
+                try {
+                  // Ensure compliance label exists
+                  try {
+                    await appOctokit.rest.issues.getLabel({ owner, repo, name: 'compliance' });
+                  } catch {
+                    await appOctokit.rest.issues.createLabel({
+                      owner, repo,
+                      name: 'compliance',
+                      color: 'B60205',
+                      description: 'Convention compliance finding',
+                    });
+                  }
+
+                  await appOctokit.rest.issues.create({
+                    owner, repo,
+                    title: `Convention ${finding.type}: ${finding.convention}`,
+                    body,
+                    labels: ['compliance'],
+                  });
+                  core.info(`Created issue in ${finding.repo}: ${finding.convention}`);
+                  totalCreated++;
+                } catch (error) {
+                  core.warning(`Failed to create issue in ${finding.repo}: ${error.message}`);
+                }
+              }
+            }
+
+            // Post summary on own pinned issue
+            const pinnedIssues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'pinned',
+              state: 'open',
+              per_page: 1,
+            });
+
+            if (pinnedIssues.data.length > 0) {
+              const pinned = pinnedIssues.data[0];
+              const marker = '<!-- drift-review -->';
+
+              let summaryBody = `${marker}\n### Drift Detection Summary\n\n`;
+              for (const pf of allFindings) {
+                const emoji = pf.findings.length === 0 ? '🟢' : '🟡';
+                summaryBody += `**${pf.project}:** ${emoji} ${pf.findings.length} finding(s)\n`;
+                summaryBody += `${pf.summary}\n\n`;
+              }
+              summaryBody += `Created ${totalCreated} issue(s), skipped ${totalSkipped} duplicate(s).\n`;
+              summaryBody += `\n<sub>Last run: ${new Date().toISOString()}</sub>`;
+
+              const comments = await github.paginate(github.rest.issues.listComments, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pinned.number,
+              });
+
+              const existing = comments.find(c => c.body && c.body.includes(marker));
+
+              if (existing) {
+                await github.rest.issues.updateComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: existing.id,
+                  body: summaryBody,
+                });
+              } else {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: pinned.number,
+                  body: summaryBody,
+                });
+              }
+            }
+
+            core.summary.addRaw(`Created ${totalCreated} issue(s), skipped ${totalSkipped} duplicate(s)`);
+            await core.summary.write();

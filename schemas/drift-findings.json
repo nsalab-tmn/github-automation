@@ -1,0 +1,55 @@
+{
+  "name": "drift_review",
+  "description": "Convention drift findings for a single project",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "project": {
+        "type": "string",
+        "description": "Project name"
+      },
+      "findings": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["drift", "gap", "stale_docs", "inconsistency"]
+            },
+            "severity": {
+              "type": "string",
+              "enum": ["high", "medium", "low"]
+            },
+            "repo": {
+              "type": "string",
+              "description": "Affected repo (owner/name) or knowledge-base for stale_docs"
+            },
+            "convention": {
+              "type": "string",
+              "description": "Source convention document or section"
+            },
+            "expected": {
+              "type": "string",
+              "description": "What the convention says should exist"
+            },
+            "actual": {
+              "type": "string",
+              "description": "What the repo actually has"
+            },
+            "recommendation": {
+              "type": "string",
+              "description": "Specific actionable fix"
+            }
+          },
+          "required": ["type", "severity", "repo", "convention", "expected", "actual", "recommendation"]
+        }
+      },
+      "summary": {
+        "type": "string",
+        "description": "One paragraph overview of project convention health"
+      }
+    },
+    "required": ["project", "findings", "summary"]
+  }
+}
