@@ -1,0 +1,139 @@
+name: Label PR by size
+
+on:
+  workflow_call:
+    inputs:
+      size-xs:
+        description: 'Upper bound for XS (inclusive)'
+        required: false
+        type: number
+        default: 9
+      size-s:
+        description: 'Upper bound for S (inclusive)'
+        required: false
+        type: number
+        default: 49
+      size-m:
+        description: 'Upper bound for M (inclusive)'
+        required: false
+        type: number
+        default: 199
+      size-l:
+        description: 'Upper bound for L (inclusive)'
+        required: false
+        type: number
+        default: 499
+      exclude-patterns:
+        description: 'JSON array of glob patterns to exclude from line count'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  pr-size:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Label PR by size
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+
+            if (!pr) {
+              core.warning('No pull request found in event payload — skipping');
+              return;
+            }
+
+            const XS = ${{ inputs.size-xs }};
+            const S = ${{ inputs.size-s }};
+            const M = ${{ inputs.size-m }};
+            const L = ${{ inputs.size-l }};
+
+            // Parse exclude patterns
+            let excludePatterns = [];
+            const excludeRaw = `${{ inputs.exclude-patterns }}`;
+            if (excludeRaw) {
+              try {
+                excludePatterns = JSON.parse(excludeRaw);
+              } catch (e) {
+                core.warning(`Invalid exclude-patterns JSON: ${e.message} — counting all files`);
+              }
+            }
+
+            // Get changed files
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number,
+            });
+
+            // Glob matching for exclusions
+            function matchGlob(pattern, path) {
+              const regexStr = pattern
+                .replace(/\./g, '\\.')
+                .replace(/\*\*/g, '{{GLOBSTAR}}')
+                .replace(/\*/g, '[^/]*')
+                .replace(/\{\{GLOBSTAR\}\}/g, '.*')
+                .replace(/\?/g, '[^/]');
+              return new RegExp(`^${regexStr}$`).test(path);
+            }
+
+            let totalLines = 0;
+            let excludedCount = 0;
+
+            for (const file of files) {
+              const excluded = excludePatterns.some(p => matchGlob(p, file.filename));
+              if (excluded) {
+                excludedCount++;
+                continue;
+              }
+              totalLines += file.additions + file.deletions;
+            }
+
+            // Determine size bucket
+            let sizeLabel;
+            if (totalLines <= XS) {
+              sizeLabel = 'size/XS';
+            } else if (totalLines <= S) {
+              sizeLabel = 'size/S';
+            } else if (totalLines <= M) {
+              sizeLabel = 'size/M';
+            } else if (totalLines <= L) {
+              sizeLabel = 'size/L';
+            } else {
+              sizeLabel = 'size/XL';
+            }
+
+            // Remove any existing size labels, then apply new one
+            const existingLabels = pr.labels.map(l => l.name);
+            const sizeLabels = existingLabels.filter(l => l.startsWith('size/'));
+
+            for (const old of sizeLabels) {
+              if (old !== sizeLabel) {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: pr.number,
+                  name: old,
+                });
+                core.info(`Removed label "${old}"`);
+              }
+            }
+
+            if (!existingLabels.includes(sizeLabel)) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                labels: [sizeLabel],
+              });
+            }
+
+            const excludeNote = excludedCount > 0 ? ` (${excludedCount} file(s) excluded)` : '';
+            core.info(`PR #${pr.number}: ${totalLines} lines changed${excludeNote} → ${sizeLabel}`);
+            core.summary.addRaw(`### PR Size\n\n${totalLines} lines changed${excludeNote} → **${sizeLabel}**`);
+            await core.summary.write();
