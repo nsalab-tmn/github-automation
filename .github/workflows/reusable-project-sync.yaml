@@ -69,16 +69,19 @@ jobs:
             }
 
             // Layer 1 built-in project workflows handle:
-            //   #7  Item closed           → Done     (issue closed via PR merge auto-close or manually)
-            //   #11 PR linked to issue    → In Review (non-draft PR opened with Closes #N)
-            //   #16 Item reopened         → Backlog   (issue reopened)
+            //   #7  Item closed           → Done      (issue closed via PR merge auto-close or manually)
+            //   #11 PR linked to issue    → In Review  (any PR linked, draft or not)
+            //   #16 Item reopened         → Backlog    (issue reopened)
             //
             // Layer 2 (this workflow) handles only what Layer 1 cannot:
-            //   - Draft PR opened         → In Progress (Layer 1 #11 doesn't distinguish draft)
-            //   - PR ready_for_review     → In Review   (no Layer 1 trigger)
+            //   - PR ready_for_review     → In Review   (no Layer 1 trigger; useful after changes_requested)
             //   - PR review re-requested  → In Review   (#11 only fires on initial link, not re-requests)
             //   - Changes requested       → In Progress (#14 acts on PR item, not linked issue)
             //   - PR closed without merge → Backlog     (no Layer 1 trigger)
+            //
+            // Not handled (by design):
+            //   - Draft PR → In Progress: Layer 1 #11 doesn't distinguish draft from non-draft,
+            //     so drafts go to In Review same as non-draft. Accepted trade-off — draft PRs are rare.
 
             if (eventName === 'pull_request') {
               const pr = context.payload.pull_request;
@@ -93,15 +96,7 @@ jobs:
                 return;
               }
 
-              if (action === 'opened' || action === 'reopened') {
-                if (pr.draft) {
-                  targetStatus = STATUS_IN_PROGRESS;
-                } else {
-                  // Non-draft PR linked to issue → Layer 1 #11 handles this
-                  core.info('Non-draft PR opened — Layer 1 "PR linked to issue" handles this');
-                  return;
-                }
-              } else if (action === 'ready_for_review') {
+              if (action === 'ready_for_review') {
                 targetStatus = STATUS_IN_REVIEW;
               } else if (action === 'review_requested') {
                 // Needed after changes_requested → In Progress cycle.
