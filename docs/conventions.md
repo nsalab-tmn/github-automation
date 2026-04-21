@@ -111,7 +111,7 @@ name: housekeeping
 run-name: "[${{github.run_number}}] Housekeeping [${{github.event_name}}]"
 ```
 
-Format: `[run_number] Description [context]` — consistent across all org repos.
+Format: `[run_number] Description [context]` — consistent across org repos.
 
 ### Permissions convention
 
