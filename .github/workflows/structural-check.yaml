@@ -1,0 +1,11 @@
+name: structural-check
+run-name: "[${{github.run_number}}] Structural check [${{github.event_name}}]"
+
+on:
+  schedule:
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+jobs:
+  structural-check:
+    uses: nsalab-tmn/github-automation/.github/workflows/reusable-structural-check.yaml@main
