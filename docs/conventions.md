@@ -39,6 +39,7 @@ Examples: `reusable-auto-assign.yaml`, `reusable-auto-project.yaml`, `reusable-s
 | `reusable-auto-project` | `issues` | `project-number`, `default-status`, `type-mapping` (JSON) | Adds issue to a GitHub Projects board, sets Status and Type |
 | `reusable-project-sync` | `issues`, `pull_request`, `pull_request_review` | `project-number`, `status-backlog`, `status-in-progress`, `status-in-review`, `status-done` | Syncs issue Status on project board based on PR/issue lifecycle events |
 | `reusable-auto-label` | `pull_request` | `label-config` (JSON) | Labels PRs based on changed file paths |
+| `reusable-branch-validate` | `pull_request` | `branch-pattern` (regex), `exempt-authors` | Validates branch name convention and linked issue |
 | `reusable-pr-size` | `pull_request` | `size-xs`, `size-s`, `size-m`, `size-l`, `exclude-patterns` (JSON) | Labels PRs by lines changed (XS/S/M/L/XL) |
 | `reusable-pr-validate` | `pull_request` | `require-issue`, `require-labels`, `require-description` | Validates PR has linked issue, description, labels |
 | `reusable-stale-check` | `schedule` | `days-before-stale`, `days-before-close`, `stale-label`, `exempt-labels`, `exempt-assignees` | Labels inactive issues as stale, optionally closes them |
