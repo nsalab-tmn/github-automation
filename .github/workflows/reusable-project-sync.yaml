@@ -289,7 +289,44 @@ jobs:
                 continue;
               }
 
-              // Update status
+              // Delete and re-add the item to force board column reposition.
+              // updateProjectV2ItemFieldValue updates the field value correctly but
+              // does NOT reliably move the card between kanban columns — a known
+              // GitHub Projects rendering issue. Layer 1 built-in workflows use an
+              // internal code path that handles this; the public API does not.
+              // The delete+re-add cycle forces a fresh board position every time.
+
+              await github.graphql(`
+                mutation($projectId: ID!, $itemId: ID!) {
+                  deleteProjectV2Item(input: {projectId: $projectId, itemId: $itemId}) {
+                    deletedItemId
+                  }
+                }
+              `, {
+                projectId: project.id,
+                itemId: projectItem.id,
+              });
+
+              const readdMutation = await github.graphql(`
+                mutation($projectId: ID!, $contentId: ID!) {
+                  addProjectV2ItemById(input: {projectId: $projectId, contentId: $contentId}) {
+                    item {
+                      id
+                    }
+                  }
+                }
+              `, {
+                projectId: project.id,
+                contentId: issueData.node_id,
+              });
+
+              const newItemId = readdMutation.addProjectV2ItemById?.item?.id;
+              if (!newItemId) {
+                core.warning(`Failed to re-add issue #${issueNumber} to project — skipping status update`);
+                summaryLines.push(`⚠ #${issueNumber} re-add failed after delete`);
+                continue;
+              }
+
               await github.graphql(`
                 mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
                   updateProjectV2ItemFieldValue(input: {
@@ -305,12 +342,12 @@ jobs:
                 }
               `, {
                 projectId: project.id,
-                itemId: projectItem.id,
+                itemId: newItemId,
                 fieldId: statusField.id,
                 optionId: targetOption.id,
               });
 
-              core.info(`Issue #${issueNumber}: "${currentStatus}" → "${resolvedStatus}"`);
+              core.info(`Issue #${issueNumber}: "${currentStatus}" → "${resolvedStatus}" (delete+re-add)`);
               summaryLines.push(`✓ #${issueNumber}: ${currentStatus} → ${resolvedStatus}`);
             }
 
