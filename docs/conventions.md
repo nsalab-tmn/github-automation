@@ -42,6 +42,7 @@ Examples: `reusable-auto-assign.yaml`, `reusable-auto-project.yaml`, `reusable-s
 | `reusable-branch-validate` | `pull_request` | `branch-pattern` (regex), `exempt-authors` | Validates branch name convention and linked issue |
 | `reusable-pr-size` | `pull_request` | `size-xs`, `size-s`, `size-m`, `size-l`, `exclude-patterns` (JSON) | Labels PRs by lines changed (XS/S/M/L/XL) |
 | `reusable-pr-validate` | `pull_request` | `require-issue`, `require-labels`, `require-description` | Validates PR has linked issue, description, labels |
+| `reusable-compliance-check` | `push`, `pull_request` | `require-pr`, `require-checks`, `exempt-authors`, `compliance-label` | Detects direct pushes and PRs merged without passing validation |
 | `reusable-conflict-check` | `push`, `schedule` | `conflict-label` | Detects merge conflicts on open PRs and labels them |
 | `reusable-stale-check` | `schedule` | `days-before-stale`, `days-before-close`, `stale-label`, `exempt-labels`, `exempt-assignees` | Labels inactive issues as stale, optionally closes them |
 | `reusable-stale-pr` | `schedule` | `days-before-stale`, `days-before-close`, `stale-label`, `exempt-labels`, `exempt-authors` | Labels inactive PRs as stale, optionally closes drafts |
