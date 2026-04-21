@@ -50,7 +50,6 @@ jobs:
     uses: nsalab-tmn/github-automation/.github/workflows/reusable-auto-project.yaml@main
     with:
       project-number: 3  # your GitHub Projects board number
-      default-status: Backlog  # set initial Status so items appear in filtered views
       type-mapping: |
         {
           "bug": "Bug",
@@ -208,7 +207,7 @@ Each job in the caller is independent — include only what you need. The caller
 
 - `default-assignee`: GitHub username to fall back to if the issue/PR creator can't be assigned (e.g., not a collaborator). Omit to skip fallback.
 - `project-number`: find this in your project board URL — `https://github.com/orgs/nsalab-tmn/projects/N` → use `N`.
-- `default-status`: initial Status value for newly added items (e.g., `Backlog`). **Recommended** — without this, items won't appear in board views that filter by Status.
+- `default-status`: initial Status value for newly added items (e.g., `Backlog`). **Not needed** if Layer 1 #12 (Item added to project → Backlog) is enabled on the board — Layer 1 handles it with cleaner identity.
 - `status-backlog`: Status column name for backlog/reopened items. Default `Backlog`. Must match the option name on your project board exactly.
 - `status-in-progress`: Status column name for items under active development. Default `In Progress`.
 - `status-in-review`: Status column name for items under review. Default `In Review`.
