@@ -68,23 +68,19 @@ jobs:
               return [...new Set(numbers)];
             }
 
-            if (eventName === 'issues') {
-              const issue = context.payload.issue;
-              if (!issue) {
-                core.warning('No issue in payload — skipping');
-                return;
-              }
-              issueNumbers = [issue.number];
+            // Layer 1 built-in project workflows handle:
+            //   #7  Item closed           → Done     (issue closed via PR merge auto-close or manually)
+            //   #11 PR linked to issue    → In Review (non-draft PR opened with Closes #N)
+            //   #16 Item reopened         → Backlog   (issue reopened)
+            //
+            // Layer 2 (this workflow) handles only what Layer 1 cannot:
+            //   - Draft PR opened         → In Progress (Layer 1 #11 doesn't distinguish draft)
+            //   - PR ready_for_review     → In Review   (no Layer 1 trigger)
+            //   - PR review re-requested  → In Review   (#11 only fires on initial link, not re-requests)
+            //   - Changes requested       → In Progress (#14 acts on PR item, not linked issue)
+            //   - PR closed without merge → Backlog     (no Layer 1 trigger)
 
-              if (action === 'reopened') {
-                targetStatus = STATUS_BACKLOG;
-              } else if (action === 'closed') {
-                targetStatus = STATUS_DONE;
-              } else {
-                core.info(`Unhandled issues action "${action}" — skipping`);
-                return;
-              }
-            } else if (eventName === 'pull_request') {
+            if (eventName === 'pull_request') {
               const pr = context.payload.pull_request;
               if (!pr) {
                 core.warning('No pull_request in payload — skipping');
@@ -101,15 +97,21 @@ jobs:
                 if (pr.draft) {
                   targetStatus = STATUS_IN_PROGRESS;
                 } else {
-                  targetStatus = STATUS_IN_REVIEW;
+                  // Non-draft PR linked to issue → Layer 1 #11 handles this
+                  core.info('Non-draft PR opened — Layer 1 "PR linked to issue" handles this');
+                  return;
                 }
               } else if (action === 'ready_for_review') {
                 targetStatus = STATUS_IN_REVIEW;
               } else if (action === 'review_requested') {
+                // Needed after changes_requested → In Progress cycle.
+                // Layer 1 #11 only fires on initial PR link, not re-requests.
                 targetStatus = STATUS_IN_REVIEW;
               } else if (action === 'closed') {
                 if (pr.merged) {
-                  targetStatus = STATUS_DONE;
+                  // PR merged → GitHub auto-closes issue → Layer 1 #7 handles Done
+                  core.info('PR merged — Layer 1 "Item closed" handles this via auto-close');
+                  return;
                 } else {
                   checkOtherPRs = true;
                   closedPrNumber = pr.number;
