@@ -57,8 +57,22 @@ jobs:
               return;
             }
 
-            // Determine issue type
-            const issueType = issue.issue_type?.name;
+            // Determine issue type — query API instead of trusting payload.
+            // The event payload may be stale (e.g., typed event fired by
+            // auto-project, but payload doesn't include the updated type).
+            const issueQuery = await github.graphql(`
+              query($owner: String!, $repo: String!, $number: Int!) {
+                repository(owner: $owner, name: $repo) {
+                  issue(number: $number) {
+                    issueType {
+                      name
+                    }
+                  }
+                }
+              }
+            `, { owner: org, repo, number: issue.number });
+
+            const issueType = issueQuery.repository.issue.issueType?.name;
             if (!issueType) {
               core.info('Issue has no type set — skipping defaults');
               return;
