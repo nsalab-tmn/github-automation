@@ -175,6 +175,32 @@ jobs:
     uses: nsalab-tmn/github-automation/.github/workflows/reusable-compliance-check.yaml@main
 ```
 
+### Structural check (separate caller)
+
+Validates the repo has required files, workflow callers, and labels. Posts results to the pinned issue (if `<!-- structural-check -->` markers exist) and creates a compliance issue on failures:
+
+```yaml
+# .github/workflows/structural-check.yaml
+name: structural-check
+run-name: "[${{github.run_number}}] Structural check [${{github.event_name}}]"
+
+on:
+  schedule:
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+jobs:
+  structural-check:
+    uses: nsalab-tmn/github-automation/.github/workflows/reusable-structural-check.yaml@main
+```
+
+To display results in the pinned issue, add markers to its body:
+
+```markdown
+<!-- structural-check -->
+<!-- /structural-check -->
+```
+
 ### Conflict check (separate caller)
 
 Checks open PRs for merge conflicts after pushes to main. Also runs weekly as a fallback:
@@ -267,6 +293,7 @@ If org-level secrets are already configured, no per-repo setup is needed.
 | `reusable-compliance-check` | Detects direct pushes and merges without validation | `require-pr`, `require-checks`, `exempt-authors`, `compliance-label` (all optional) | — |
 | `reusable-conflict-check` | Detects merge conflicts on open PRs and labels them | `conflict-label` (optional, default `merge-conflict`) | — |
 | `reusable-stale-check` | Labels inactive issues as stale, optionally closes them | `days-before-stale`, `days-before-close`, `stale-label`, `exempt-labels`, `exempt-assignees` (all optional) | — |
+| `reusable-structural-check` | Validates required files, workflows, and labels exist | `required-files`, `required-workflows`, `required-labels` (all optional with defaults) | — |
 | `reusable-stale-pr` | Labels inactive PRs as stale, optionally closes drafts | `days-before-stale`, `days-before-close`, `stale-label`, `exempt-labels`, `exempt-authors` (all optional) | — |
 | `reusable-pinned-sync` | Auto-updates pinned issue checklist, remaining, and completed sections | `pinned-label` (optional, default `pinned`) | — |
 

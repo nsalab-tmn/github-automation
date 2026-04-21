@@ -59,6 +59,7 @@ github-automation/
 | `reusable-compliance-check` | Detect direct pushes and unchecked merges | Active |
 | `reusable-conflict-check` | Detect and label PRs with merge conflicts | Active |
 | `reusable-stale-check` | Label and manage inactive issues | Active |
+| `reusable-structural-check` | Validate required files, labels, and workflows | Active |
 | `reusable-stale-pr` | Label and manage inactive pull requests | Active |
 | `reusable-pinned-sync` | Auto-update pinned context issue from repo state | Active |
 | `scaffold-repo` | Create new repos via issue form with org standards | Active |

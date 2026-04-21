@@ -45,6 +45,7 @@ Examples: `reusable-auto-assign.yaml`, `reusable-auto-project.yaml`, `reusable-s
 | `reusable-compliance-check` | `push`, `pull_request` | `require-pr`, `require-checks`, `exempt-authors`, `compliance-label` | Detects direct pushes and PRs merged without passing validation |
 | `reusable-conflict-check` | `push`, `schedule` | `conflict-label` | Detects merge conflicts on open PRs and labels them |
 | `reusable-stale-check` | `schedule` | `days-before-stale`, `days-before-close`, `stale-label`, `exempt-labels`, `exempt-assignees` | Labels inactive issues as stale, optionally closes them |
+| `reusable-structural-check` | `schedule` | `required-files`, `required-workflows`, `required-labels`, `pinned-label`, `compliance-label` | Validates repo has required files, workflow callers, and labels |
 | `reusable-stale-pr` | `schedule` | `days-before-stale`, `days-before-close`, `stale-label`, `exempt-labels`, `exempt-authors` | Labels inactive PRs as stale, optionally closes drafts |
 | `reusable-pinned-sync` | `issues: [closed]`, `pull_request: [closed]`, `schedule` | `pinned-label` | Auto-updates pinned context issue sections marked with HTML comment markers |
 | `scaffold-repo` | `issues` (with `repository-request` label) | Issue form fields | Creates a new repo with org standards via issue form |

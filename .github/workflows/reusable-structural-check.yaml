@@ -1,0 +1,151 @@
+name: Structural compliance check
+
+on:
+  workflow_call:
+    inputs:
+      required-files:
+        description: 'Comma-separated file paths that must exist'
+        required: false
+        type: string
+        default: 'README.md,CONTRIBUTING.md,docs/conventions.md'
+      required-workflows:
+        description: 'Comma-separated workflow files that must exist in .github/workflows/'
+        required: false
+        type: string
+        default: 'housekeeping.yaml,stale-check.yaml,pinned-sync.yaml'
+      required-labels:
+        description: 'Comma-separated labels that must exist in the repo'
+        required: false
+        type: string
+        default: 'bug,enhancement,pinned,stale,in-progress'
+      pinned-label:
+        description: 'Label identifying the pinned context issue for posting results'
+        required: false
+        type: string
+        default: 'pinned'
+      compliance-label:
+        description: 'Label for compliance alert issues'
+        required: false
+        type: string
+        default: 'compliance'
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  structural-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check structural compliance
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const requiredFiles = '${{ inputs.required-files }}'.split(',').map(f => f.trim()).filter(Boolean);
+            const requiredWorkflows = '${{ inputs.required-workflows }}'.split(',').map(f => f.trim()).filter(Boolean);
+            const requiredLabels = '${{ inputs.required-labels }}'.split(',').map(l => l.trim()).filter(Boolean);
+            const pinnedLabel = '${{ inputs.pinned-label }}';
+            const complianceLabel = '${{ inputs.compliance-label }}';
+
+            const results = [];
+            let hasFailures = false;
+
+            // --- Check required files ---
+
+            for (const file of requiredFiles) {
+              try {
+                await github.rest.repos.getContent({ owner, repo, path: file });
+                results.push({ check: 'File', item: file, status: '✅' });
+              } catch {
+                results.push({ check: 'File', item: file, status: '❌ missing' });
+                hasFailures = true;
+              }
+            }
+
+            // --- Check required workflows ---
+
+            for (const workflow of requiredWorkflows) {
+              const path = `.github/workflows/${workflow}`;
+              try {
+                await github.rest.repos.getContent({ owner, repo, path });
+                results.push({ check: 'Workflow', item: workflow, status: '✅' });
+              } catch {
+                results.push({ check: 'Workflow', item: workflow, status: '❌ missing' });
+                hasFailures = true;
+              }
+            }
+
+            // --- Check required labels ---
+
+            const { data: repoLabels } = await github.rest.issues.listLabelsForRepo({
+              owner, repo, per_page: 100,
+            });
+            const labelNames = repoLabels.map(l => l.name);
+
+            for (const label of requiredLabels) {
+              if (labelNames.includes(label)) {
+                results.push({ check: 'Label', item: label, status: '✅' });
+              } else {
+                results.push({ check: 'Label', item: label, status: '❌ missing' });
+                hasFailures = true;
+              }
+            }
+
+            // --- Build report ---
+
+            const rows = results.map(r => `| ${r.check} | \`${r.item}\` | ${r.status} |`).join('\n');
+            const summary = hasFailures ? '⚠ Some checks failed' : '✅ All checks passed';
+            const report = `### Structural Check\n\n${summary}\n\n| Type | Item | Status |\n|------|------|--------|\n${rows}`;
+
+            core.info(summary);
+            core.summary.addRaw(report);
+            await core.summary.write();
+
+            // --- Post to pinned issue ---
+
+            const marker = '<!-- structural-check -->';
+            const markerEnd = '<!-- /structural-check -->';
+            const timestamped = `${marker}\n${report}\n\n_Last checked: ${new Date().toISOString()}_\n${markerEnd}`;
+
+            const issues = await github.rest.issues.listForRepo({
+              owner, repo,
+              labels: pinnedLabel,
+              state: 'open',
+              per_page: 1,
+            });
+
+            if (issues.data.length > 0) {
+              const pinnedIssue = issues.data[0];
+              const body = pinnedIssue.body || '';
+
+              if (body.includes(marker)) {
+                const regex = new RegExp(`${marker}[\\s\\S]*?${markerEnd}`, 'm');
+                const updatedBody = body.replace(regex, timestamped);
+                await github.rest.issues.update({
+                  owner, repo,
+                  issue_number: pinnedIssue.number,
+                  body: updatedBody,
+                });
+                core.info(`Updated structural check section in pinned issue #${pinnedIssue.number}`);
+              } else {
+                core.info(`No ${marker} section in pinned issue — skipping pinned update`);
+              }
+            }
+
+            // --- Create compliance issue if failures ---
+
+            if (hasFailures) {
+              const failedItems = results.filter(r => r.status.includes('❌'));
+              const failList = failedItems.map(r => `- **${r.check}**: \`${r.item}\``).join('\n');
+
+              await github.rest.issues.create({
+                owner, repo,
+                title: `Structural check: ${failedItems.length} item(s) missing`,
+                body: `### Structural compliance failure\n\nThe following required items are missing:\n\n${failList}\n\nSee [docs/adoption.md](https://github.com/nsalab-tmn/github-automation/blob/main/docs/adoption.md) for setup instructions.`,
+                labels: [complianceLabel],
+              });
+
+              core.setFailed(`${failedItems.length} structural check(s) failed`);
+            }
