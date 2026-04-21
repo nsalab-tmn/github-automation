@@ -29,6 +29,10 @@ jobs:
     if: github.event_name == 'pull_request'
     uses: nsalab-tmn/github-automation/.github/workflows/reusable-pr-size.yaml@main
 
+  branch-validate:
+    if: github.event_name == 'pull_request'
+    uses: nsalab-tmn/github-automation/.github/workflows/reusable-branch-validate.yaml@main
+
   pr-validate:
     needs: [auto-label, pr-size]
     if: github.event_name == 'pull_request' && always()
