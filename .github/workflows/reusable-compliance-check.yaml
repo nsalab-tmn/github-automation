@@ -64,13 +64,28 @@ jobs:
                 return;
               }
 
-              // Check if this commit is associated with a merged PR
+              // Check if this commit is associated with a merged PR.
+              // Two methods: commit association API (may have indexing delay
+              // on squash merges) and recently merged PRs by merge_commit_sha.
               const { data: associatedPRs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
                 owner, repo,
                 commit_sha: headCommit.id,
               });
 
-              const mergedPR = associatedPRs.find(pr => pr.merged_at && pr.merge_commit_sha === headCommit.id);
+              let mergedPR = associatedPRs.find(pr => pr.merged_at && pr.merge_commit_sha === headCommit.id);
+
+              // Fallback: check recently merged PRs by merge_commit_sha.
+              // The commit association index may not be ready yet on squash merges.
+              if (!mergedPR) {
+                const { data: recentPRs } = await github.rest.pulls.list({
+                  owner, repo,
+                  state: 'closed',
+                  sort: 'updated',
+                  direction: 'desc',
+                  per_page: 5,
+                });
+                mergedPR = recentPRs.find(pr => pr.merged_at && pr.merge_commit_sha === headCommit.id);
+              }
 
               if (!mergedPR) {
                 // Direct push — create alert issue
