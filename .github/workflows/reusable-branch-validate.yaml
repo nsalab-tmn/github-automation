@@ -1,0 +1,129 @@
+name: Validate branch naming convention
+
+on:
+  workflow_call:
+    inputs:
+      branch-pattern:
+        description: 'Regex pattern for valid branch names'
+        required: false
+        type: string
+        default: '^(feature|fix|docs|infra|cleanup)/[0-9]+-[a-z0-9-]+$'
+      exempt-authors:
+        description: 'Comma-separated authors exempt from check'
+        required: false
+        type: string
+        default: 'github-actions[bot],dependabot[bot],nsalab-automation[bot]'
+
+permissions:
+  pull-requests: write
+  issues: read
+  statuses: write
+
+jobs:
+  branch-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate branch name
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+
+            if (!pr) {
+              core.warning('No pull request found in event payload — skipping');
+              return;
+            }
+
+            // Check author exemption
+            const exemptAuthors = '${{ inputs.exempt-authors }}'.split(',').map(a => a.trim()).filter(Boolean);
+            if (exemptAuthors.includes(pr.user.login)) {
+              core.info(`Author @${pr.user.login} is exempt — skipping`);
+              core.summary.addRaw(`✓ Author @${pr.user.login} is exempt from branch naming check`);
+              await core.summary.write();
+              return;
+            }
+
+            const branch = pr.head.ref;
+            const pattern = new RegExp('${{ inputs.branch-pattern }}');
+            const marker = '<!-- branch-validation-bot -->';
+
+            let passed = true;
+            let message = '';
+
+            // Check branch name pattern
+            if (!pattern.test(branch)) {
+              passed = false;
+              message = `Branch \`${branch}\` does not match the required pattern: \`${pattern}\`\n\nExpected format: \`<type>/<issue>-<description>\`\n- \`feature/42-add-auth\`\n- \`fix/15-login-crash\`\n- \`docs/7-update-readme\`\n- \`cleanup/3-remove-legacy\``;
+            }
+
+            // If pattern matched, verify the linked issue exists
+            if (passed) {
+              const issueMatch = branch.match(/^(?:feature|fix|docs|infra|cleanup)\/(\d+)-/);
+              if (issueMatch) {
+                const issueNumber = parseInt(issueMatch[1], 10);
+                try {
+                  const { data: issue } = await github.rest.issues.get({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: issueNumber,
+                  });
+                  if (issue.pull_request) {
+                    passed = false;
+                    message = `Branch references #${issueNumber} but it's a pull request, not an issue`;
+                  } else {
+                    message = `Branch \`${branch}\` — linked to issue #${issueNumber} ("${issue.title}")`;
+                  }
+                } catch (error) {
+                  passed = false;
+                  message = `Branch references issue #${issueNumber} but it was not found in this repo`;
+                }
+              }
+            }
+
+            // Post or update bot comment
+            const icon = passed ? '✅' : '❌';
+            const commentBody = `${marker}\n### Branch Naming\n\n${icon} ${message}`;
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr.number,
+            });
+
+            const existing = comments.find(c => c.body && c.body.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body: commentBody,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                body: commentBody,
+              });
+            }
+
+            // Set commit status
+            const state = passed ? 'success' : 'failure';
+            const description = passed ? 'Branch name is valid' : 'Branch name does not follow convention';
+
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: pr.head.sha,
+              state,
+              description,
+              context: 'Branch Naming',
+            });
+
+            if (!passed) {
+              core.setFailed(description);
+            }
+
+            core.summary.addRaw(`### Branch Naming\n\n${icon} ${message}`);
+            await core.summary.write();
