@@ -57,7 +57,7 @@ on:
   issues:
     types: [opened]
   pull_request:
-    types: [opened, synchronize, edited, labeled, unlabeled, reopened, ready_for_review, review_requested, closed]
+    types: [opened, synchronize, edited, labeled, unlabeled, ready_for_review, review_requested, closed]
   pull_request_review:
     types: [submitted]
 
@@ -80,7 +80,7 @@ jobs:
     if: >-
       github.event_name == 'pull_request_review'
       || (github.event_name == 'pull_request'
-          && contains(fromJSON('["opened","reopened","ready_for_review","review_requested","closed"]'),
+          && contains(fromJSON('["ready_for_review","review_requested","closed"]'),
                       github.event.action))
     uses: nsalab-tmn/github-automation/.github/workflows/reusable-project-sync.yaml@main
     with:
