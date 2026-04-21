@@ -137,6 +137,7 @@ Pinned to major versions for stability:
 
 - **Reusable workflow secrets**: Callers must explicitly pass secrets — they are not inherited. Use `secrets: inherit` only if the caller trusts this repo with all its secrets.
 - **GITHUB_TOKEN scope**: The default `GITHUB_TOKEN` cannot add items to GitHub Projects (org-level). A PAT or GitHub App token with `project` scope is required for `reusable-auto-project`.
-- **Workflow call depth**: GitHub allows max 4 levels of reusable workflow nesting. Keep it flat — callers call this repo directly, no chaining.
+- **Workflow call depth**: GitHub allows max 10 levels of reusable workflow nesting (increased from 4). Keep it flat — callers call this repo directly, no chaining.
+- **Reusable workflow bootstrap**: When introducing a new reusable workflow, don't add the caller job in the same PR. The `@main` reference will fail because the workflow doesn't exist on main yet, which breaks the entire workflow file (all jobs fail, not just the new one). Merge the workflow first, then add the caller in a follow-up commit.
 - **project-sync vs auto-project**: Separate workflows with separate concerns. `auto-project` runs on `issues: [opened]` to add new issues to the board and set initial Status/Type. `project-sync` handles ongoing status transitions from PR and issue lifecycle events. Don't combine them.
 - **`pull_request_review` event**: Only fires on `submitted`, not on dismissal. The `changes_requested` state moves the linked issue back to In Progress. The `approved` state is a no-op (stays In Review until merged).
