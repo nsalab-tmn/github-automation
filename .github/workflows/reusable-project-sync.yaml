@@ -99,10 +99,10 @@ jobs:
 
               if (action === 'opened' || action === 'reopened') {
                 if (pr.draft) {
-                  core.info('PR is a draft — skipping status transition');
-                  return;
+                  targetStatus = STATUS_IN_PROGRESS;
+                } else {
+                  targetStatus = STATUS_IN_REVIEW;
                 }
-                targetStatus = STATUS_IN_PROGRESS;
               } else if (action === 'ready_for_review') {
                 targetStatus = STATUS_IN_REVIEW;
               } else if (action === 'review_requested') {
