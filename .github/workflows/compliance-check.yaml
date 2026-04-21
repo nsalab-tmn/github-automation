@@ -1,0 +1,15 @@
+name: compliance-check
+run-name: "[${{github.run_number}}] Compliance check [${{github.event_name}}]"
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [closed]
+
+jobs:
+  compliance-check:
+    if: >-
+      (github.event_name == 'push')
+      || (github.event_name == 'pull_request' && github.event.pull_request.merged)
+    uses: nsalab-tmn/github-automation/.github/workflows/reusable-compliance-check.yaml@main
