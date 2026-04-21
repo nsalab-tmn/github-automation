@@ -56,6 +56,7 @@ github-automation/
 | `reusable-branch-validate` | Validate branch naming convention and linked issue | Active |
 | `reusable-pr-size` | Label PRs by lines changed (XS/S/M/L/XL) | Active |
 | `reusable-pr-validate` | Validate PR structure and linked issue | Active |
+| `reusable-conflict-check` | Detect and label PRs with merge conflicts | Active |
 | `reusable-stale-check` | Label and manage inactive issues | Active |
 | `reusable-pinned-sync` | Auto-update pinned context issue from repo state | Active |
 | `scaffold-repo` | Create new repos via issue form with org standards | Active |

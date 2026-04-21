@@ -1,0 +1,97 @@
+name: Detect merge conflicts
+
+on:
+  workflow_call:
+    inputs:
+      conflict-label:
+        description: 'Label to apply to PRs with merge conflicts'
+        required: false
+        type: string
+        default: 'merge-conflict'
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  conflict-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check open PRs for conflicts
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const conflictLabel = '${{ inputs.conflict-label }}';
+
+            const pulls = await github.paginate(github.rest.pulls.list, {
+              owner, repo,
+              state: 'open',
+            });
+
+            if (pulls.length === 0) {
+              core.info('No open PRs — nothing to check');
+              core.summary.addRaw('### Conflict Check\n\nNo open PRs.');
+              await core.summary.write();
+              return;
+            }
+
+            let labeled = 0;
+            let cleared = 0;
+            let unknown = 0;
+
+            for (const pull of pulls) {
+              // Fetch full PR data — list endpoint doesn't include mergeable
+              const { data: pr } = await github.rest.pulls.get({
+                owner, repo,
+                pull_number: pull.number,
+              });
+
+              const hasLabel = pr.labels.some(l => l.name === conflictLabel);
+
+              // mergeable can be null while GitHub computes it — retry once
+              let mergeable = pr.mergeable;
+              if (mergeable === null) {
+                await new Promise(r => setTimeout(r, 3000));
+                const { data: retry } = await github.rest.pulls.get({
+                  owner, repo,
+                  pull_number: pull.number,
+                });
+                mergeable = retry.mergeable;
+              }
+
+              if (mergeable === null) {
+                core.info(`PR #${pr.number}: mergeable unknown — skipping`);
+                unknown++;
+                continue;
+              }
+
+              if (mergeable === false && !hasLabel) {
+                await github.rest.issues.addLabels({
+                  owner, repo,
+                  issue_number: pr.number,
+                  labels: [conflictLabel],
+                });
+                await github.rest.issues.createComment({
+                  owner, repo,
+                  issue_number: pr.number,
+                  body: `This PR has merge conflicts with the base branch. Please rebase or merge to resolve them.`,
+                });
+                core.info(`PR #${pr.number}: conflict detected — labeled`);
+                labeled++;
+              } else if (mergeable === true && hasLabel) {
+                await github.rest.issues.removeLabel({
+                  owner, repo,
+                  issue_number: pr.number,
+                  name: conflictLabel,
+                });
+                core.info(`PR #${pr.number}: conflict resolved — label removed`);
+                cleared++;
+              }
+            }
+
+            const summary = `### Conflict Check\n\n${pulls.length} open PR(s) checked: ${labeled} conflicting, ${cleared} resolved, ${unknown} unknown`;
+            core.info(summary);
+            core.summary.addRaw(summary);
+            await core.summary.write();
