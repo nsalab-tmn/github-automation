@@ -127,6 +127,27 @@ jobs:
       exempt-labels: pinned,in-progress
 ```
 
+### Conflict check (separate caller)
+
+Checks open PRs for merge conflicts after pushes to main. Also runs weekly as a fallback:
+
+```yaml
+# .github/workflows/conflict-check.yaml
+name: conflict-check
+run-name: "[${{github.run_number}}] Conflict check [${{github.event_name}}]"
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+jobs:
+  conflict-check:
+    uses: nsalab-tmn/github-automation/.github/workflows/reusable-conflict-check.yaml@main
+```
+
 ### Pinned issue sync (separate caller)
 
 Keeps the pinned context issue in sync with repo state. Triggered on issue close, PR merge, and weekly schedule:
@@ -195,6 +216,7 @@ If org-level secrets are already configured, no per-repo setup is needed.
 | `reusable-branch-validate` | Validates branch name convention and linked issue | `branch-pattern` (optional, regex), `exempt-authors` (optional) | — |
 | `reusable-pr-size` | Labels PRs by lines changed (XS/S/M/L/XL) | `size-xs`, `size-s`, `size-m`, `size-l` (all optional), `exclude-patterns` (optional, JSON) | — |
 | `reusable-pr-validate` | Validates PR has linked issue, description, labels | `require-issue`, `require-labels`, `require-description` (all optional, default `true`) | — |
+| `reusable-conflict-check` | Detects merge conflicts on open PRs and labels them | `conflict-label` (optional, default `merge-conflict`) | — |
 | `reusable-stale-check` | Labels inactive issues as stale, optionally closes them | `days-before-stale`, `days-before-close`, `stale-label`, `exempt-labels`, `exempt-assignees` (all optional) | — |
 | `reusable-pinned-sync` | Auto-updates pinned issue checklist, remaining, and completed sections | `pinned-label` (optional, default `pinned`) | — |
 
