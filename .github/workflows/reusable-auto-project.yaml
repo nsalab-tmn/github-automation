@@ -1,4 +1,4 @@
-name: reusable: auto-project
+name: reusable - auto-project
 
 on:
   workflow_call:

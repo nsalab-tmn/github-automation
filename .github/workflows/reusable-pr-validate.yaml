@@ -1,4 +1,4 @@
-name: reusable: pr-validate
+name: reusable - pr-validate
 
 on:
   workflow_call:

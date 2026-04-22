@@ -1,4 +1,4 @@
-name: reusable: pr-size
+name: reusable - pr-size
 
 on:
   workflow_call:

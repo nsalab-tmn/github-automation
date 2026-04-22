@@ -1,4 +1,4 @@
-name: reusable: branch-validate
+name: reusable - branch-validate
 
 on:
   workflow_call:
