@@ -27,8 +27,10 @@ MAX_ATTEMPTS="${MAX_ATTEMPTS:-3}"
 echo "::notice::Selecting issue from project #${PROJECT_NUMBER}" >&2
 echo "::notice::Required labels: ${REQUIRE_LABELS}" >&2
 
-# Paginate through all board items
-ALL_ITEMS="[]"
+# Paginate through all board items (write to temp file to avoid arg-list-too-long)
+ITEMS_FILE=$(mktemp)
+trap 'rm -f "$ITEMS_FILE"' EXIT
+echo "[]" > "$ITEMS_FILE"
 HAS_NEXT="true"
 CURSOR=""
 
@@ -78,19 +80,19 @@ while [[ "$HAS_NEXT" == "true" ]]; do
   " -f org="$ORG" -F number="$PROJECT_NUMBER")
 
   NODES=$(echo "$PAGE" | jq '.data.organization.projectV2.items.nodes')
-  ALL_ITEMS=$(echo "$ALL_ITEMS" | jq --argjson n "$NODES" '. + $n')
+  jq --argjson n "$NODES" '. + $n' "$ITEMS_FILE" > "${ITEMS_FILE}.tmp" && mv "${ITEMS_FILE}.tmp" "$ITEMS_FILE"
   HAS_NEXT=$(echo "$PAGE" | jq -r '.data.organization.projectV2.items.pageInfo.hasNextPage')
   CURSOR=$(echo "$PAGE" | jq -r '.data.organization.projectV2.items.pageInfo.endCursor')
 
-  COUNT=$(echo "$ALL_ITEMS" | jq 'length')
+  COUNT=$(jq 'length' "$ITEMS_FILE")
   echo "::notice::  Fetched ${COUNT} items so far (hasNextPage: ${HAS_NEXT})" >&2
 done
 
-TOTAL=$(echo "$ALL_ITEMS" | jq 'length')
+TOTAL=$(jq 'length' "$ITEMS_FILE")
 echo "::notice::Total board items: ${TOTAL}" >&2
 
 # Filter and rank candidates
-SELECTED=$(echo "$ALL_ITEMS" | jq -r \
+SELECTED=$(jq -r \
   --argjson excluded "$EXCLUDED_LABELS" \
   --argjson eligible "$ELIGIBLE_STATUSES" \
   --argjson required "$REQUIRE_LABELS" '
@@ -135,7 +137,7 @@ SELECTED=$(echo "$ALL_ITEMS" | jq -r \
       labels: [.content.labels.nodes[].name],
       assignees: [.content.assignees.nodes[].login]
     }
-')
+' "$ITEMS_FILE")
 
 if [[ -z "$SELECTED" ]]; then
   echo "::notice::No eligible issues found on the board" >&2
