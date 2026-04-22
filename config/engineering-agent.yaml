@@ -9,6 +9,9 @@ agent:
     - pinned
     - needs-triage
     - stale
+  # Crawl phase: only pick issues with ALL of these labels
+  require-labels:
+    - compliance
   # Board column names — must match project board exactly (case-sensitive)
   status:
     backlog: Backlog

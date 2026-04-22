@@ -61,6 +61,12 @@ jobs:
           print(f'excluded_labels={excluded}')
           eligible = json.dumps(agent['eligible-statuses'])
           print(f'eligible_statuses={eligible}')
+          require = json.dumps(agent.get('require-labels', []))
+          print(f'require_labels={require}')
+          all_repos = []
+          for p in config['projects']:
+              all_repos.extend(p['repos'])
+          print(f'project_repos={json.dumps(all_repos)}')
           status = agent['status']
           print(f\"status_backlog={status['backlog']}\")
           print(f\"status_blocked={status['blocked']}\")
@@ -94,6 +100,8 @@ jobs:
           PROJECT_NUMBER: ${{ steps.config.outputs.project_number }}
           EXCLUDED_LABELS: ${{ steps.config.outputs.excluded_labels }}
           ELIGIBLE_STATUSES: ${{ steps.config.outputs.eligible_statuses }}
+          REQUIRE_LABELS: ${{ steps.config.outputs.require_labels }}
+          PROJECT_REPOS: ${{ steps.config.outputs.project_repos }}
           MAX_ATTEMPTS: ${{ steps.config.outputs.max_attempts }}
         run: |
           echo "::group::Issue selection"
@@ -145,9 +153,9 @@ jobs:
           cat selected-issue.json
           echo "::endgroup::"
 
-      # Step 2: Claim issue
+      # Step 2: Claim issue (skipped in dry-run)
       - name: Claim issue
-        if: steps.select.outputs.selected == 'true'
+        if: steps.select.outputs.selected == 'true' && inputs.dry-run != true
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           ISSUE_REPO: ${{ steps.select.outputs.issue_repo }}
