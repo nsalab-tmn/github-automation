@@ -46,12 +46,12 @@ GitHub Projects V2 has built-in automation rules that operate independently of G
 
 | Workflow | What it does | Status |
 |---|---|---|
-| #7 Item closed → Done | Set Status when issue/PR closes | ✅ Enabled |
-| #11 PR linked to issue → In Review | Set Status when PR links to issue | ✅ Enabled |
-| #12 Item added → Backlog | Set Status when item is added to board | ✅ Enabled |
-| #16 Item reopened → Backlog | Set Status when issue reopens | ✅ Enabled |
-| #10 Auto-add sub-issues | Add sub-issues when parent is on board | ✅ Enabled |
-| #17 Auto-archive | Archive items matching criteria | ✅ Enabled |
+| Item closed → Done | Set Status when issue/PR closes | ✅ Enabled |
+| PR linked to issue → In Review | Set Status when PR links to issue | ✅ Enabled |
+| Item added → Backlog | Set Status when item is added to board | ✅ Enabled |
+| Item reopened → Backlog | Set Status when issue reopens | ✅ Enabled |
+| Auto-add sub-issues | Add sub-issues when parent is on board | ✅ Enabled |
+| Auto-archive | Archive items matching criteria | ✅ Enabled |
 
 These fire regardless of who created the event (including bots), produce clean single-event timelines, and cannot be configured via API (manual UI setup per project board).
 
