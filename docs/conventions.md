@@ -13,13 +13,22 @@ Technical reference for github-automation workflows.
 
 ## Workflow naming
 
+### File names
+
 All reusable workflows follow the pattern:
 
 ```
 reusable-<action>.yaml
 ```
 
-Examples: `reusable-auto-assign.yaml`, `reusable-auto-project.yaml`, `reusable-stale-check.yaml`.
+Callers use the action name without the `reusable-` prefix: `housekeeping.yaml`, `stale-check.yaml`, `conflict-check.yaml`.
+
+### Display names (`name:` field)
+
+- **Callers**: `lowercase-slug` matching the filename — e.g., `housekeeping`, `stale-check`
+- **Reusable workflows**: `reusable: <slug>` — e.g., `reusable: auto-assign`, `reusable: project-sync`
+
+This groups reusable workflows visually in the Actions sidebar, separate from callers.
 
 ## Workflow design principles
 
