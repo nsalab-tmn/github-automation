@@ -92,9 +92,9 @@ collect_repo_state() {
     allow_rebase_merge
   }' 2>/dev/null || echo "{}")
 
-  # SOPS config
-  local sops_yaml
-  sops_yaml=$(gh api "repos/${repo}/contents/.sops.yaml" --jq '.content' 2>/dev/null | base64 -d 2>/dev/null || echo "")
+  # SOPS config (existence only — don't expose key material)
+  local sops_exists
+  sops_exists=$(gh api "repos/${repo}/contents/.sops.yaml" --jq '.name' 2>/dev/null && echo "true" || echo "false")
 
   # Build repo state object
   jq -n \
@@ -105,7 +105,7 @@ collect_repo_state() {
     --arg pr_template "${pr_template}" \
     --argjson labels "${labels}" \
     --argjson settings "${settings}" \
-    --arg sops_yaml "${sops_yaml}" \
+    --arg sops_exists "${sops_exists}" \
     '{
       repo: $repo,
       files: $files,
@@ -114,24 +114,28 @@ collect_repo_state() {
       pr_template: ($pr_template == "true"),
       labels: $labels,
       settings: $settings,
-      has_sops: ($sops_yaml != "")
+      has_sops: ($sops_exists == "true")
     }'
 }
 
 # --- Main ---
 
-echo "Collecting conventions from ${KB_REPO}..." >&2
+echo "::notice::Collecting conventions from ${KB_REPO}" >&2
 CONVENTIONS=$(collect_conventions "${KB_REPO}" "${CONVENTIONS_PATH}")
 
-echo "Collecting adoption guide..." >&2
+echo "::notice::Collecting adoption guide" >&2
 ADOPTION=$(collect_adoption_guide)
 
 REPO_STATES="[]"
+REPO_COUNT=0
 for repo in ${REPOS}; do
-  echo "Collecting state from ${repo}..." >&2
+  echo "::notice::Collecting state from ${repo}" >&2
   state=$(collect_repo_state "${repo}")
   REPO_STATES=$(echo "${REPO_STATES}" | jq --argjson s "${state}" '. + [$s]')
+  REPO_COUNT=$((REPO_COUNT + 1))
 done
+
+echo "::notice::Gathered state from ${REPO_COUNT} repos" >&2
 
 # Build final output
 jq -n \
