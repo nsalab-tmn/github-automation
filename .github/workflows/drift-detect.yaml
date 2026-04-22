@@ -19,9 +19,9 @@ jobs:
 
       - name: Generate app token
         id: app-token
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v3
         with:
-          app-id: ${{ secrets.APP_ID }}
+          client-id: ${{ secrets.APP_CLIENT_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
           owner: nsalab-tmn
 
@@ -89,13 +89,19 @@ jobs:
       - name: Execute actions
         if: always() && hashFiles('all-findings.json') != ''
         uses: actions/github-script@v8
-        env:
-          APP_TOKEN: ${{ steps.app-token.outputs.token }}
         with:
+          github-token: ${{ steps.app-token.outputs.token }}
           script: |
             const fs = require('fs');
             const allFindings = JSON.parse(fs.readFileSync('all-findings.json', 'utf8'));
-            const appOctokit = github.getOctokit(process.env.APP_TOKEN);
+            const projects = JSON.parse(fs.readFileSync('projects.json', 'utf8'));
+
+            // Build lookup of valid repos from config for normalization
+            const validRepos = new Set();
+            for (const project of projects) {
+              for (const r of project.repos) validRepos.add(r);
+              validRepos.add(project['knowledge-base']);
+            }
 
             let totalCreated = 0;
             let totalSkipped = 0;
@@ -104,21 +110,35 @@ jobs:
               const project = projectFindings.project;
 
               for (const finding of projectFindings.findings) {
-                const [owner, repo] = finding.repo.split('/');
-                const findingId = `${finding.type}:${finding.convention}`.replace(/[^a-z0-9:-]/gi, '-').toLowerCase().slice(0, 80);
+                // Normalize repo: Claude sometimes outputs short names
+                let repoFull = finding.repo;
+                if (!repoFull.includes('/')) {
+                  // Try to match against known repos from config
+                  const match = [...validRepos].find(r => r.endsWith(`/${repoFull}`) || r.endsWith(`-${repoFull}`) || r === repoFull);
+                  repoFull = match || `nsalab-tmn/${repoFull}`;
+                }
+                const [owner, repo] = repoFull.split('/');
+                // Deterministic dedup key from schema-constrained fields
+                const convFile = finding.convention_file.toLowerCase();
+                const findingId = `${finding.type}:${convFile}`;
                 const marker = `<!-- drift:${findingId} -->`;
 
                 // Check for existing open issue with same marker
-                const existing = await appOctokit.rest.issues.listForRepo({
-                  owner, repo,
-                  state: 'open',
-                  labels: 'compliance',
-                  per_page: 100,
-                });
-
-                const duplicate = existing.data.find(i => i.body && i.body.includes(marker));
+                // Label may not exist yet — search all open issues if needed
+                let duplicate = null;
+                try {
+                  const existing = await github.rest.issues.listForRepo({
+                    owner, repo,
+                    state: 'open',
+                    labels: 'compliance',
+                    per_page: 100,
+                  });
+                  duplicate = existing.data.find(i => i.body && i.body.includes(marker));
+                } catch {
+                  // Label doesn't exist yet — no duplicates possible
+                }
                 if (duplicate) {
-                  core.info(`Skipped duplicate: ${finding.repo} — ${finding.convention} (existing #${duplicate.number})`);
+                  core.info(`Skipped duplicate: ${finding.repo} — ${finding.convention_file} (existing #${duplicate.number})`);
                   totalSkipped++;
                   continue;
                 }
@@ -127,7 +147,9 @@ jobs:
                 const severityEmoji = { high: '🔴', medium: '🟡', low: '🔵' }[finding.severity] || '⚪';
                 const body = [
                   marker,
-                  `### Convention ${finding.type}: ${finding.convention}`,
+                  `### Convention ${finding.type}: ${finding.convention_file}`,
+                  '',
+                  `**Detail:** ${finding.convention_detail}`,
                   '',
                   `**Severity:** ${severityEmoji} ${finding.severity}`,
                   `**Type:** ${finding.type}`,
@@ -145,9 +167,9 @@ jobs:
                 try {
                   // Ensure compliance label exists
                   try {
-                    await appOctokit.rest.issues.getLabel({ owner, repo, name: 'compliance' });
+                    await github.rest.issues.getLabel({ owner, repo, name: 'compliance' });
                   } catch {
-                    await appOctokit.rest.issues.createLabel({
+                    await github.rest.issues.createLabel({
                       owner, repo,
                       name: 'compliance',
                       color: 'B60205',
@@ -155,13 +177,16 @@ jobs:
                     });
                   }
 
-                  await appOctokit.rest.issues.create({
+                  // Deterministic title from stable components (not Claude's free text)
+                  const issueTitle = `Convention ${finding.type}: ${convFile}`;
+
+                  await github.rest.issues.create({
                     owner, repo,
-                    title: `Convention ${finding.type}: ${finding.convention}`,
+                    title: issueTitle,
                     body,
                     labels: ['compliance'],
                   });
-                  core.info(`Created issue in ${finding.repo}: ${finding.convention}`);
+                  core.info(`Created issue in ${finding.repo}: ${finding.convention_file}`);
                   totalCreated++;
                 } catch (error) {
                   core.warning(`Failed to create issue in ${finding.repo}: ${error.message}`);

@@ -25,9 +25,13 @@
               "type": "string",
               "description": "Affected repo (owner/name) or knowledge-base for stale_docs"
             },
-            "convention": {
+            "convention_file": {
               "type": "string",
-              "description": "Source convention document or section"
+              "description": "Convention filename only, e.g. 'repo-documentation.md', 'ansible-conventions.md'. Must match a filename from the conventions input."
+            },
+            "convention_detail": {
+              "type": "string",
+              "description": "Specific section or aspect within the convention that is violated"
             },
             "expected": {
               "type": "string",
@@ -42,7 +46,7 @@
               "description": "Specific actionable fix"
             }
           },
-          "required": ["type", "severity", "repo", "convention", "expected", "actual", "recommendation"]
+          "required": ["type", "severity", "repo", "convention_file", "convention_detail", "expected", "actual", "recommendation"]
         }
       },
       "summary": {

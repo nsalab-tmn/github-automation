@@ -54,3 +54,8 @@ to check. Evaluate it on two axes:
    intentional, or aligning the repos if it's accidental.
 7. Keep the summary to 2-3 sentences.
 8. If everything is compliant, return an empty findings array with a positive summary.
+9. `convention_file` MUST be exactly a filename from the conventions input (e.g.,
+   `repo-documentation.md`, `ansible-conventions.md`). Do NOT include paths or extra text.
+   For org-wide adoption guide findings, use `adoption-guide.md`.
+10. Produce at most ONE finding per `type` + `convention_file` combination per repo.
+    Merge multiple issues from the same convention file into one finding.
