@@ -1,4 +1,4 @@
-name: Sync pinned context issue
+name: reusable: pinned-sync
 
 on:
   workflow_call:

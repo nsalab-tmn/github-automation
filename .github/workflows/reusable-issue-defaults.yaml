@@ -1,4 +1,4 @@
-name: Set issue field defaults
+name: reusable: issue-defaults
 
 on:
   workflow_call:

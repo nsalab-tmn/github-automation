@@ -1,4 +1,4 @@
-name: Stale issue check
+name: reusable: stale-check
 
 on:
   workflow_call:

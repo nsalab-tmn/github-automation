@@ -1,4 +1,4 @@
-name: Structural compliance check
+name: reusable: structural-check
 
 on:
   workflow_call:
