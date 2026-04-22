@@ -30,6 +30,16 @@ Compare each repo's state against the conventions and produce structured finding
   workflow config differences (missing default-status, type-mapping)
 - `low` — documentation gaps, missing issue templates, cosmetic inconsistencies
 
+## Knowledge base dual role
+
+The project knowledge base repo appears both as the source of conventions AND as a repo
+to check. Evaluate it on two axes:
+- **As a repo:** does it comply with org-wide standards (housekeeping workflow, labels,
+  templates, merge settings)? Check it like any other docs-type repo.
+- **As a source of truth:** are its convention articles consistent with actual practice
+  across the other repos? If all repos do something differently from what a convention
+  says, flag the convention as `stale_docs`, not the repos as `drift`.
+
 ## Rules
 
 1. Respond ONLY by calling the drift_review tool. Never respond with plain text.

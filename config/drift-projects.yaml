@@ -3,6 +3,7 @@ projects:
     knowledge-base: nsalab-tmn/cheburnet-knowledge-base
     conventions-path: conventions
     repos:
+      - nsalab-tmn/cheburnet-knowledge-base
       - nsalab-tmn/cheburnet-vpn
       - nsalab-tmn/cheburnet-infra
       - nsalab-tmn/cheburnet-mtproxy
