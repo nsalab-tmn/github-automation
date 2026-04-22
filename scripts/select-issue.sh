@@ -16,6 +16,7 @@ set -euo pipefail
 ORG="${ORG:?ORG env var required}"
 PROJECT_NUMBER="${PROJECT_NUMBER:?PROJECT_NUMBER env var required}"
 EXCLUDED_LABELS="${EXCLUDED_LABELS:-'["pinned","needs-triage","stale"]'}"
+ELIGIBLE_STATUSES="${ELIGIBLE_STATUSES:-'["Backlog","In progress"]'}"
 MAX_ATTEMPTS="${MAX_ATTEMPTS:-3}"
 
 echo "::notice::Selecting issue from project #${PROJECT_NUMBER}" >&2
@@ -61,7 +62,7 @@ ITEMS=$(gh api graphql -f query='
 # Filter and rank using jq
 # Eligible: Backlog or In Progress, open, no excluded labels
 # Sort: Priority (P1>P2>P3>none) > Size (S>M>L>XL>none) > Type (Bug>Task>Feature>none) > Age (oldest first)
-SELECTED=$(echo "$ITEMS" | jq -r --argjson excluded "$EXCLUDED_LABELS" '
+SELECTED=$(echo "$ITEMS" | jq -r --argjson excluded "$EXCLUDED_LABELS" --argjson eligible "$ELIGIBLE_STATUSES" '
   # Priority/Size/Type rank maps (lower = better)
   def priority_rank:
     if . == "P1" then 0
@@ -87,7 +88,7 @@ SELECTED=$(echo "$ITEMS" | jq -r --argjson excluded "$EXCLUDED_LABELS" '
       .content != null
       and .content.number != null
       and .content.state == "OPEN"
-      and ((.status // {}).name // "" | IN("Backlog", "In Progress"))
+      and ((.status // {}).name // "" as $s | $eligible | index($s) != null)
       and ([.content.labels.nodes[].name] | any(. as $l | $excluded | index($l)) | not)
     ))
   | map(. + {

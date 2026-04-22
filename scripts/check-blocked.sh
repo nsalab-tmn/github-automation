@@ -12,6 +12,8 @@ set -euo pipefail
 
 ORG="${ORG:?ORG env var required}"
 PROJECT_NUMBER="${PROJECT_NUMBER:?PROJECT_NUMBER env var required}"
+STATUS_BLOCKED="${STATUS_BLOCKED:-Blocked}"
+STATUS_BACKLOG="${STATUS_BACKLOG:-Backlog}"
 
 echo "::notice::Checking blocked items on project #${PROJECT_NUMBER}" >&2
 
@@ -34,8 +36,8 @@ PROJECT_DATA=$(gh api graphql -f query='
 
 PROJECT_ID=$(echo "$PROJECT_DATA" | jq -r '.data.organization.projectV2.id')
 STATUS_FIELD_ID=$(echo "$PROJECT_DATA" | jq -r '.data.organization.projectV2.field.id')
-BLOCKED_OPTION_ID=$(echo "$PROJECT_DATA" | jq -r '.data.organization.projectV2.field.options[] | select(.name == "Blocked") | .id')
-BACKLOG_OPTION_ID=$(echo "$PROJECT_DATA" | jq -r '.data.organization.projectV2.field.options[] | select(.name == "Backlog") | .id')
+BLOCKED_OPTION_ID=$(echo "$PROJECT_DATA" | jq -r --arg s "$STATUS_BLOCKED" '.data.organization.projectV2.field.options[] | select(.name == $s) | .id')
+BACKLOG_OPTION_ID=$(echo "$PROJECT_DATA" | jq -r --arg s "$STATUS_BACKLOG" '.data.organization.projectV2.field.options[] | select(.name == $s) | .id')
 
 if [[ -z "$BLOCKED_OPTION_ID" || "$BLOCKED_OPTION_ID" == "null" ]]; then
   echo "::notice::No 'Blocked' status option found on project board" >&2
@@ -70,7 +72,7 @@ BLOCKED_ITEMS=$(gh api graphql -f query='
       }
     }
   }
-' -f projectId="$PROJECT_ID" | jq '[.data.node.items.nodes[] | select(.fieldValueByName.name == "Blocked") | select(.content != null)]')
+' -f projectId="$PROJECT_ID" | jq --arg s "$STATUS_BLOCKED" '[.data.node.items.nodes[] | select(.fieldValueByName.name == $s) | select(.content != null)]')
 
 BLOCKED_COUNT=$(echo "$BLOCKED_ITEMS" | jq 'length')
 echo "::notice::Found ${BLOCKED_COUNT} blocked item(s)" >&2
