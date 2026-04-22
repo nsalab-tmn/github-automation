@@ -96,25 +96,69 @@ collect_repo_state() {
   local sops_exists
   sops_exists=$(gh api "repos/${repo}/contents/.sops.yaml" --jq '.name' 2>/dev/null && echo "true" || echo "false")
 
+  # Top-level directories (for label-config coverage analysis)
+  local top_dirs
+  top_dirs=$(echo "${file_tree}" | jq '[.[] | split("/")[0]] | unique | map(select(contains(".") | not))' 2>/dev/null || echo "[]")
+
+  # Pinned issue
+  local pinned_issue="{}"
+  local pinned_data
+  pinned_data=$(gh api "repos/${repo}/issues?labels=pinned&state=open&per_page=1" --jq '.[0] // empty' 2>/dev/null || echo "")
+  if [[ -n "${pinned_data}" ]]; then
+    local has_checklist_marker has_remaining_marker has_completed_marker
+    has_checklist_marker=$(echo "${pinned_data}" | jq 'if .body then (.body | contains("<!-- auto:checklist -->")) else false end')
+    has_remaining_marker=$(echo "${pinned_data}" | jq 'if .body then (.body | contains("<!-- auto:remaining -->")) else false end')
+    has_completed_marker=$(echo "${pinned_data}" | jq 'if .body then (.body | contains("<!-- auto:completed -->")) else false end')
+    pinned_issue=$(jq -n \
+      --argjson exists true \
+      --argjson has_checklist "${has_checklist_marker}" \
+      --argjson has_remaining "${has_remaining_marker}" \
+      --argjson has_completed "${has_completed_marker}" \
+      '{exists: $exists, has_auto_markers: ($has_checklist and $has_remaining and $has_completed)}')
+  else
+    pinned_issue='{"exists": false, "has_auto_markers": false}'
+  fi
+
+  # Branch protection (public repos only — private repos return 403 on free tier)
+  local branch_protection="{}"
+  local bp_data
+  bp_data=$(gh api "repos/${repo}/branches/main/protection" 2>/dev/null || echo "")
+  if [[ -n "${bp_data}" && "${bp_data}" != *"not protected"* && "${bp_data}" != *"Upgrade"* ]]; then
+    branch_protection=$(echo "${bp_data}" | jq '{
+      enabled: true,
+      required_status_checks: (.required_status_checks.contexts // []),
+      enforce_admins: .enforce_admins.enabled,
+      allow_force_pushes: .allow_force_pushes.enabled
+    }' 2>/dev/null || echo '{"enabled": false}')
+  else
+    branch_protection='{"enabled": false}'
+  fi
+
   # Build repo state object
   jq -n \
     --arg repo "${repo}" \
     --argjson files "${file_tree}" \
+    --argjson top_dirs "${top_dirs}" \
     --argjson workflows "${workflows}" \
     --argjson issue_templates "${issue_templates}" \
     --arg pr_template "${pr_template}" \
     --argjson labels "${labels}" \
     --argjson settings "${settings}" \
     --arg sops_exists "${sops_exists}" \
+    --argjson pinned_issue "${pinned_issue}" \
+    --argjson branch_protection "${branch_protection}" \
     '{
       repo: $repo,
       files: $files,
+      top_level_dirs: $top_dirs,
       workflows: $workflows,
       issue_templates: $issue_templates,
       pr_template: ($pr_template == "true"),
       labels: $labels,
       settings: $settings,
-      has_sops: ($sops_exists == "true")
+      has_sops: ($sops_exists == "true"),
+      pinned_issue: $pinned_issue,
+      branch_protection: $branch_protection
     }'
 }
 
