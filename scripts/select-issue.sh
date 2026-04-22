@@ -40,7 +40,9 @@ while [[ "$HAS_NEXT" == "true" ]]; do
     CURSOR_ARG=", after: \"${CURSOR}\""
   fi
 
-  PAGE=$(gh api graphql -f query="
+  # Write API response to file (can be large — 100 items with full bodies)
+  PAGE_FILE=$(mktemp)
+  gh api graphql -f query="
     query(\$org: String!, \$number: Int!) {
       organization(login: \$org) {
         projectV2(number: \$number) {
@@ -76,12 +78,14 @@ while [[ "$HAS_NEXT" == "true" ]]; do
         }
       }
     }
-  " -f org="$ORG" -F number="$PROJECT_NUMBER")
+  " -f org="$ORG" -F number="$PROJECT_NUMBER" > "$PAGE_FILE"
 
-  NODES=$(echo "$PAGE" | jq '.data.organization.projectV2.items.nodes')
-  jq --argjson n "$NODES" '. + $n' "$ITEMS_FILE" > "${ITEMS_FILE}.tmp" && mv "${ITEMS_FILE}.tmp" "$ITEMS_FILE"
-  HAS_NEXT=$(echo "$PAGE" | jq -r '.data.organization.projectV2.items.pageInfo.hasNextPage')
-  CURSOR=$(echo "$PAGE" | jq -r '.data.organization.projectV2.items.pageInfo.endCursor')
+  # Append nodes and extract pagination info (all from file, never shell vars)
+  jq '.data.organization.projectV2.items.nodes' "$PAGE_FILE" > "${ITEMS_FILE}.nodes"
+  jq --slurpfile n "${ITEMS_FILE}.nodes" '. + $n[0]' "$ITEMS_FILE" > "${ITEMS_FILE}.tmp" && mv "${ITEMS_FILE}.tmp" "$ITEMS_FILE"
+  HAS_NEXT=$(jq -r '.data.organization.projectV2.items.pageInfo.hasNextPage' "$PAGE_FILE")
+  CURSOR=$(jq -r '.data.organization.projectV2.items.pageInfo.endCursor' "$PAGE_FILE")
+  rm -f "$PAGE_FILE" "${ITEMS_FILE}.nodes"
 
   COUNT=$(jq 'length' "$ITEMS_FILE")
   echo "::notice::  Fetched ${COUNT} items so far (hasNextPage: ${HAS_NEXT})" >&2
