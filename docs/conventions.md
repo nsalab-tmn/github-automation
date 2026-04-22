@@ -157,8 +157,8 @@ Pinned to major versions for stability:
 | Action | Version |
 |--------|---------|
 | `actions/checkout` | `v5` |
+| `actions/create-github-app-token` | `v3` |
 | `actions/github-script` | `v8` |
-| `actions/labeler` | `v5` |
 
 ## Known gotchas
 
