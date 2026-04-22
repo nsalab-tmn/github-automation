@@ -7,7 +7,7 @@ body:
     attributes:
       label: Repository name
       description: "Will be created as nsalab-tmn/<name>"
-      placeholder: "cheburnet-service"
+      placeholder: "project-service"
     validations:
       required: true
 
