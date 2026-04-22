@@ -1,4 +1,4 @@
-name: Auto-label PRs by changed paths
+name: reusable: auto-label
 
 on:
   workflow_call:

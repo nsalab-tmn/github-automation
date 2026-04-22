@@ -1,4 +1,4 @@
-name: Compliance check
+name: reusable: compliance-check
 
 on:
   workflow_call:

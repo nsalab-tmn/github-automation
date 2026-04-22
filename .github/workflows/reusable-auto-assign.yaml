@@ -1,4 +1,4 @@
-name: Auto-assign issues and PRs
+name: reusable: auto-assign
 
 on:
   workflow_call:

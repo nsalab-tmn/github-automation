@@ -1,4 +1,4 @@
-name: Detect merge conflicts
+name: reusable: conflict-check
 
 on:
   workflow_call:

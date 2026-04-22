@@ -1,4 +1,4 @@
-name: Auto-add issues to GitHub Project
+name: reusable: auto-project
 
 on:
   workflow_call:

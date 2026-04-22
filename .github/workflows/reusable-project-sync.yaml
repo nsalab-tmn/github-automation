@@ -1,4 +1,4 @@
-name: Sync project board status
+name: reusable: project-sync
 
 on:
   workflow_call:
