@@ -63,10 +63,6 @@ jobs:
           print(f'eligible_statuses={eligible}')
           require = json.dumps(agent.get('require-labels', []))
           print(f'require_labels={require}')
-          all_repos = []
-          for p in config['projects']:
-              all_repos.extend(p['repos'])
-          print(f'project_repos={json.dumps(all_repos)}')
           status = agent['status']
           print(f\"status_backlog={status['backlog']}\")
           print(f\"status_blocked={status['blocked']}\")
@@ -101,7 +97,6 @@ jobs:
           EXCLUDED_LABELS: ${{ steps.config.outputs.excluded_labels }}
           ELIGIBLE_STATUSES: ${{ steps.config.outputs.eligible_statuses }}
           REQUIRE_LABELS: ${{ steps.config.outputs.require_labels }}
-          PROJECT_REPOS: ${{ steps.config.outputs.project_repos }}
           MAX_ATTEMPTS: ${{ steps.config.outputs.max_attempts }}
         run: |
           echo "::group::Issue selection"
