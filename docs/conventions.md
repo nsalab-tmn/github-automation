@@ -69,7 +69,9 @@ on:
 
 jobs:
   auto-assign:
-    if: github.event_name == 'issues' || github.event_name == 'pull_request'
+    if: >-
+      (github.event_name == 'issues' && github.event.action == 'opened')
+      || (github.event_name == 'pull_request' && github.event.action == 'opened')
     uses: nsalab-tmn/github-automation/.github/workflows/reusable-auto-assign.yaml@main
     with:
       default-assignee: menus12

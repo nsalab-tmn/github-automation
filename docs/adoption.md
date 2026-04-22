@@ -40,7 +40,9 @@ on:
 
 jobs:
   auto-assign:
-    if: github.event_name == 'issues' || github.event_name == 'pull_request'
+    if: >-
+      (github.event_name == 'issues' && github.event.action == 'opened')
+      || (github.event_name == 'pull_request' && github.event.action == 'opened')
     uses: nsalab-tmn/github-automation/.github/workflows/reusable-auto-assign.yaml@main
     with:
       default-assignee: menus12
@@ -82,7 +84,9 @@ jobs:
       app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
   auto-label:
-    if: github.event_name == 'pull_request'
+    if: >-
+      github.event_name == 'pull_request'
+      && contains(fromJSON('["opened","synchronize"]'), github.event.action)
     uses: nsalab-tmn/github-automation/.github/workflows/reusable-auto-label.yaml@main
     with:
       label-config: |
@@ -94,10 +98,16 @@ jobs:
         }
 
   pr-size:
-    if: github.event_name == 'pull_request'
+    if: >-
+      github.event_name == 'pull_request'
+      && contains(fromJSON('["opened","synchronize"]'), github.event.action)
     uses: nsalab-tmn/github-automation/.github/workflows/reusable-pr-size.yaml@main
     with:
       exclude-patterns: '["*.lock"]'
+
+  branch-validate:
+    if: github.event_name == 'pull_request' && github.event.action == 'opened'
+    uses: nsalab-tmn/github-automation/.github/workflows/reusable-branch-validate.yaml@main
 
   pr-validate:
     needs: [auto-label, pr-size]
