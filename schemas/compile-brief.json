@@ -1,0 +1,82 @@
+{
+  "name": "compile_brief",
+  "description": "Assess issue workability and compile gathered context into an enriched brief for the implementation agent",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "workable": {
+        "type": "boolean",
+        "description": "Whether the issue can be implemented by an automated agent"
+      },
+      "confidence": {
+        "type": "string",
+        "enum": ["high", "medium", "low"],
+        "description": "Confidence that the agent can successfully implement this issue"
+      },
+      "blockers": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "vague_description",
+                "missing_acceptance_criteria",
+                "cross_repo_dependency",
+                "too_complex",
+                "needs_human_decision"
+              ]
+            },
+            "detail": {
+              "type": "string",
+              "description": "Specific explanation of the blocker"
+            }
+          },
+          "required": ["type", "detail"]
+        },
+        "description": "Blockers preventing implementation, if any"
+      },
+      "brief": {
+        "type": "object",
+        "properties": {
+          "objective": {
+            "type": "string",
+            "description": "What the issue asks for, distilled to 1-2 sentences"
+          },
+          "repo_context": {
+            "type": "string",
+            "description": "What this repo does, relevant architecture, in 2-3 sentences"
+          },
+          "plan": {
+            "type": "string",
+            "description": "Step-by-step implementation approach"
+          },
+          "key_files": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "File paths the agent should read or modify"
+          },
+          "conventions": {
+            "type": "string",
+            "description": "Relevant conventions distilled from all loaded docs that the agent must follow"
+          },
+          "gotchas": {
+            "type": "string",
+            "description": "Pitfalls to avoid, from conventions and recent PR patterns"
+          },
+          "branch_name": {
+            "type": "string",
+            "description": "Branch name following convention: fix/N-slug or feature/N-slug"
+          },
+          "commit_message": {
+            "type": "string",
+            "description": "Commit message following repo conventions"
+          }
+        },
+        "required": ["objective", "repo_context", "plan", "key_files", "conventions", "gotchas", "branch_name", "commit_message"]
+      }
+    },
+    "required": ["workable", "confidence", "blockers", "brief"]
+  }
+}

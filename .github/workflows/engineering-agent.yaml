@@ -1,0 +1,529 @@
+name: engineering-agent
+run-name: "[${{github.run_number}}] Engineering agent [${{github.event_name}}]"
+
+on:
+  workflow_dispatch:
+    inputs:
+      issue-url:
+        description: 'Optional: specific issue URL to work on (skips selection)'
+        required: false
+        type: string
+      dry-run:
+        description: 'Dry run — gather + decide only, skip implementation'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: engineering-agent
+  cancel-in-progress: false
+
+jobs:
+  engineering-agent:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout github-automation
+        uses: actions/checkout@v5
+
+      - name: Generate app token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ secrets.APP_CLIENT_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: nsalab-tmn
+
+      - name: Install dependencies
+        run: pip install anthropic pyyaml
+
+      - name: Parse agent config
+        id: config
+        env:
+          AGENT_CONFIG: config/engineering-agent.yaml
+        run: |
+          python3 -c "
+          import yaml, json
+          with open('$AGENT_CONFIG') as f:
+              config = yaml.safe_load(f)
+          agent = config['agent']
+          print(f\"project_number={agent['project-number']}\")
+          print(f\"max_attempts={agent['max-attempts']}\")
+          print(f\"max_file_count={agent['max-file-count']}\")
+          print(f\"max_diff_lines={agent['max-diff-lines']}\")
+          print(f\"timeout_minutes={agent['timeout-minutes']}\")
+          excluded = json.dumps(agent['excluded-labels'])
+          print(f'excluded_labels={excluded}')
+          projects = json.dumps(config['projects'])
+          print(f'projects={projects}')
+          " >> "$GITHUB_OUTPUT"
+
+      # Step 0: Unblock check
+      - name: Check blocked items
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          ORG: nsalab-tmn
+          PROJECT_NUMBER: ${{ steps.config.outputs.project_number }}
+        run: |
+          echo "::group::Unblock check"
+          UNBLOCKED=$(./scripts/check-blocked.sh)
+          echo "Unblocked: ${UNBLOCKED} item(s)"
+          echo "::endgroup::"
+
+      # Step 1: Select issue
+      - name: Select issue
+        id: select
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          ORG: nsalab-tmn
+          PROJECT_NUMBER: ${{ steps.config.outputs.project_number }}
+          EXCLUDED_LABELS: ${{ steps.config.outputs.excluded_labels }}
+          MAX_ATTEMPTS: ${{ steps.config.outputs.max_attempts }}
+        run: |
+          echo "::group::Issue selection"
+
+          if [[ -n "${{ inputs.issue-url }}" ]]; then
+            # Manual issue URL provided — parse repo and number
+            URL="${{ inputs.issue-url }}"
+            # Extract owner/repo and issue number from URL
+            REPO=$(echo "$URL" | grep -oP 'github\.com/\K[^/]+/[^/]+')
+            NUM=$(echo "$URL" | grep -oP '/issues/\K\d+')
+            echo "::notice::Manual issue: ${REPO}#${NUM}"
+
+            # Fetch issue details directly
+            ISSUE=$(gh api "repos/${REPO}/issues/${NUM}" --jq '{
+              issue_id: (.node_id),
+              issue_number: .number,
+              title: .title,
+              body: (.body // ""),
+              created_at: .created_at,
+              repo: (.repository_url | split("/") | .[-2:] | join("/")),
+              labels: [.labels[].name],
+              assignees: [.assignees[].login]
+            }' 2>/dev/null || echo "")
+
+            if [[ -z "$ISSUE" ]]; then
+              echo "::error::Could not fetch issue from URL: ${URL}"
+              exit 1
+            fi
+            # Add repo from parsed URL since repository_url format may differ
+            ISSUE=$(echo "$ISSUE" | jq --arg repo "$REPO" '.repo = $repo')
+            echo "$ISSUE" > selected-issue.json
+          else
+            ./scripts/select-issue.sh > selected-issue.json
+          fi
+
+          if [[ ! -s selected-issue.json ]] || [[ "$(cat selected-issue.json)" == "" ]]; then
+            echo "::notice::No eligible issues found — exiting"
+            echo "selected=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "selected=true" >> "$GITHUB_OUTPUT"
+          ISSUE_NUM=$(jq -r '.issue_number' selected-issue.json)
+          ISSUE_REPO=$(jq -r '.repo' selected-issue.json)
+          echo "issue_number=${ISSUE_NUM}" >> "$GITHUB_OUTPUT"
+          echo "issue_repo=${ISSUE_REPO}" >> "$GITHUB_OUTPUT"
+          echo "issue_repo_name=${ISSUE_REPO##*/}" >> "$GITHUB_OUTPUT"
+
+          cat selected-issue.json
+          echo "::endgroup::"
+
+      # Step 2: Claim issue
+      - name: Claim issue
+        if: steps.select.outputs.selected == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          ISSUE_REPO: ${{ steps.select.outputs.issue_repo }}
+          ISSUE_NUMBER: ${{ steps.select.outputs.issue_number }}
+          PROJECT_NUMBER: ${{ steps.config.outputs.project_number }}
+        run: |
+          echo "::group::Claiming issue"
+
+          # Assign to nsalab-automation[bot]
+          # Note: GitHub App tokens create assignments as the app's bot user
+          gh api "repos/${ISSUE_REPO}/issues/${ISSUE_NUMBER}/assignees" \
+            -f "assignees[]=nsalab-automation[bot]" >/dev/null 2>&1 || true
+
+          # Move to In Progress on project board
+          # Get project item ID for this issue
+          ISSUE_ID=$(jq -r '.issue_id' selected-issue.json)
+
+          PROJECT_DATA=$(gh api graphql -f query='
+            query($org: String!, $number: Int!) {
+              organization(login: $org) {
+                projectV2(number: $number) {
+                  id
+                  field(name: "Status") {
+                    ... on ProjectV2SingleSelectField {
+                      id
+                      options { id name }
+                    }
+                  }
+                }
+              }
+            }
+          ' -f org=nsalab-tmn -F number="$PROJECT_NUMBER")
+
+          PROJECT_ID=$(echo "$PROJECT_DATA" | jq -r '.data.organization.projectV2.id')
+          STATUS_FIELD_ID=$(echo "$PROJECT_DATA" | jq -r '.data.organization.projectV2.field.id')
+          IN_PROGRESS_ID=$(echo "$PROJECT_DATA" | jq -r '.data.organization.projectV2.field.options[] | select(.name == "In Progress") | .id')
+
+          # Find item on board
+          ITEM_ID=$(gh api graphql -f query='
+            query($issueId: ID!) {
+              node(id: $issueId) {
+                ... on Issue {
+                  projectItems(first: 10) {
+                    nodes { id project { number } }
+                  }
+                }
+              }
+            }
+          ' -f issueId="$ISSUE_ID" | jq -r --argjson pn "$PROJECT_NUMBER" \
+            '.data.node.projectItems.nodes[] | select(.project.number == $pn) | .id')
+
+          if [[ -n "$ITEM_ID" && "$ITEM_ID" != "null" ]]; then
+            gh api graphql -f query='
+              mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
+                updateProjectV2ItemFieldValue(input: {
+                  projectId: $projectId, itemId: $itemId, fieldId: $fieldId,
+                  value: { singleSelectOptionId: $optionId }
+                }) { projectV2Item { id } }
+              }
+            ' -f projectId="$PROJECT_ID" -f itemId="$ITEM_ID" \
+              -f fieldId="$STATUS_FIELD_ID" -f optionId="$IN_PROGRESS_ID" >/dev/null
+            echo "::notice::Moved to In Progress"
+          fi
+
+          # Post session comment
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          gh api "repos/${ISSUE_REPO}/issues/${ISSUE_NUMBER}/comments" \
+            -f body="Agent session started — [run #${GITHUB_RUN_NUMBER}](${RUN_URL})" \
+            >/dev/null
+
+          echo "::endgroup::"
+
+      # Step 3: Gather context
+      - name: Gather issue context
+        if: steps.select.outputs.selected == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          ISSUE_REPO: ${{ steps.select.outputs.issue_repo }}
+          ISSUE_NUMBER: ${{ steps.select.outputs.issue_number }}
+        run: |
+          echo "::group::Gathering context"
+
+          # Determine KB repo from config
+          KB_INFO=$(echo '${{ steps.config.outputs.projects }}' | jq -r --arg repo "$ISSUE_REPO" '
+            .[] | select(.repos | index($repo)) |
+            "\(.["knowledge-base"]) \(.["conventions-path"])"
+          ')
+          export KB_REPO=$(echo "$KB_INFO" | awk '{print $1}')
+          export KB_CONV_PATH=$(echo "$KB_INFO" | awk '{print $2}')
+
+          if [[ -z "$KB_REPO" || "$KB_REPO" == "null" ]]; then
+            echo "::warning::No KB repo found for ${ISSUE_REPO}, using defaults"
+            export KB_REPO="nsalab-tmn/cheburnet-knowledge-base"
+            export KB_CONV_PATH="conventions"
+          fi
+
+          ./scripts/gather-issue-context.sh > issue-context.json
+          echo "::notice::Context gathered ($(wc -c < issue-context.json) bytes)"
+          echo "::endgroup::"
+
+      # Step 4: Compile brief (Decide phase)
+      - name: Compile implementation brief
+        id: brief
+        if: steps.select.outputs.selected == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          echo "::group::Compiling brief"
+
+          python3 ./scripts/compile-brief.py \
+            issue-context.json \
+            prompts/engineering-brief.md \
+            schemas/compile-brief.json \
+            > brief.json
+
+          WORKABLE=$(jq -r '.workable' brief.json)
+          CONFIDENCE=$(jq -r '.confidence' brief.json)
+          echo "workable=${WORKABLE}" >> "$GITHUB_OUTPUT"
+          echo "confidence=${CONFIDENCE}" >> "$GITHUB_OUTPUT"
+
+          echo "::notice::Workable: ${WORKABLE}, Confidence: ${CONFIDENCE}"
+          jq '.brief' brief.json
+          echo "::endgroup::"
+
+      # Handle not-workable
+      - name: Handle not-workable issue
+        if: steps.select.outputs.selected == 'true' && steps.brief.outputs.workable == 'false'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          ISSUE_REPO: ${{ steps.select.outputs.issue_repo }}
+          ISSUE_NUMBER: ${{ steps.select.outputs.issue_number }}
+          PROJECT_NUMBER: ${{ steps.config.outputs.project_number }}
+        run: |
+          BLOCKERS=$(jq -r '.blockers[] | "- **\(.type):** \(.detail)"' brief.json | head -10)
+          ATTEMPT=$(gh api "repos/${ISSUE_REPO}/issues/${ISSUE_NUMBER}/comments" \
+            --jq '[.[] | select(.body | test("<!-- agent:attempt:"))] | length' 2>/dev/null || echo "0")
+          ATTEMPT=$((ATTEMPT + 1))
+
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          BODY="<!-- agent:attempt:${ATTEMPT} -->
+          **Agent attempt #${ATTEMPT}** — [run #${GITHUB_RUN_NUMBER}](${RUN_URL})
+          **Status:** not-workable
+          **Brief:** $(jq -r '.brief.objective' brief.json)
+          **Blockers:**
+          ${BLOCKERS}
+          <!-- /agent:attempt:${ATTEMPT} -->"
+
+          gh api "repos/${ISSUE_REPO}/issues/${ISSUE_NUMBER}/comments" \
+            -f body="$BODY" >/dev/null
+
+          # Add needs-triage label
+          gh api "repos/${ISSUE_REPO}/issues/${ISSUE_NUMBER}/labels" \
+            -f "labels[]=needs-triage" >/dev/null 2>&1 || true
+
+          # Move back to Backlog
+          ISSUE_ID=$(jq -r '.issue_id' selected-issue.json)
+          PROJECT_DATA=$(gh api graphql -f query='
+            query($org: String!, $number: Int!) {
+              organization(login: $org) {
+                projectV2(number: $number) {
+                  id
+                  field(name: "Status") {
+                    ... on ProjectV2SingleSelectField {
+                      id
+                      options { id name }
+                    }
+                  }
+                }
+              }
+            }
+          ' -f org=nsalab-tmn -F number="$PROJECT_NUMBER")
+
+          PROJECT_ID=$(echo "$PROJECT_DATA" | jq -r '.data.organization.projectV2.id')
+          STATUS_FIELD_ID=$(echo "$PROJECT_DATA" | jq -r '.data.organization.projectV2.field.id')
+          BACKLOG_ID=$(echo "$PROJECT_DATA" | jq -r '.data.organization.projectV2.field.options[] | select(.name == "Backlog") | .id')
+
+          ITEM_ID=$(gh api graphql -f query='
+            query($issueId: ID!) {
+              node(id: $issueId) {
+                ... on Issue {
+                  projectItems(first: 10) {
+                    nodes { id project { number } }
+                  }
+                }
+              }
+            }
+          ' -f issueId="$ISSUE_ID" | jq -r --argjson pn "$PROJECT_NUMBER" \
+            '.data.node.projectItems.nodes[] | select(.project.number == $pn) | .id')
+
+          if [[ -n "$ITEM_ID" && "$ITEM_ID" != "null" ]]; then
+            gh api graphql -f query='
+              mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
+                updateProjectV2ItemFieldValue(input: {
+                  projectId: $projectId, itemId: $itemId, fieldId: $fieldId,
+                  value: { singleSelectOptionId: $optionId }
+                }) { projectV2Item { id } }
+              }
+            ' -f projectId="$PROJECT_ID" -f itemId="$ITEM_ID" \
+              -f fieldId="$STATUS_FIELD_ID" -f optionId="$BACKLOG_ID" >/dev/null
+          fi
+
+          echo "::warning::Issue deemed not workable — moved to Backlog with needs-triage"
+
+      # Step 5: Implement (Claude Code CLI)
+      - name: Checkout target repo
+        if: steps.select.outputs.selected == 'true' && steps.brief.outputs.workable == 'true' && inputs.dry-run != true
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ steps.select.outputs.issue_repo }}
+          token: ${{ steps.app-token.outputs.token }}
+          path: target-repo
+
+      - name: Implement changes
+        id: implement
+        if: steps.select.outputs.selected == 'true' && steps.brief.outputs.workable == 'true' && inputs.dry-run != true
+        timeout-minutes: ${{ fromJSON(steps.config.outputs.timeout_minutes) }}
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ISSUE_NUMBER: ${{ steps.select.outputs.issue_number }}
+          ISSUE_REPO: ${{ steps.select.outputs.issue_repo }}
+          MAX_FILE_COUNT: ${{ steps.config.outputs.max_file_count }}
+          MAX_DIFF_LINES: ${{ steps.config.outputs.max_diff_lines }}
+        run: |
+          cd target-repo
+
+          BRANCH=$(jq -r '.brief.branch_name' ../brief.json)
+          git checkout -b "$BRANCH"
+          echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
+
+          BRIEF=$(jq -r '.brief | to_entries | map("**\(.key):** \(.value)") | join("\n\n")' ../brief.json)
+
+          # Run Claude Code CLI
+          npx -y @anthropic-ai/claude-code@latest -p \
+            "You are implementing issue #${ISSUE_NUMBER} in ${ISSUE_REPO}.
+
+          Here is your implementation brief — follow it precisely:
+
+          ${BRIEF}
+
+          IMPORTANT:
+          - Only modify files listed in key_files unless you discover additional files that need changes
+          - Follow the conventions listed in the brief
+          - Keep changes minimal and focused on the objective
+          - Do not add unrelated improvements
+          - Do not modify files outside this repository" \
+            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(git diff:*),Bash(git status)" \
+            --max-turns 30
+
+          # Check guardrails
+          CHANGED_FILES=$(git diff --name-only | wc -l)
+          DIFF_LINES=$(git diff --stat | tail -1 | grep -oP '\d+ insertion' | grep -oP '\d+' || echo "0")
+
+          if [[ "$CHANGED_FILES" -gt "$MAX_FILE_COUNT" ]]; then
+            echo "::error::Changed ${CHANGED_FILES} files (max: ${MAX_FILE_COUNT})"
+            echo "guardrail_exceeded=true" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          if [[ "$DIFF_LINES" -gt "$MAX_DIFF_LINES" ]]; then
+            echo "::error::Diff is ${DIFF_LINES} lines (max: ${MAX_DIFF_LINES})"
+            echo "guardrail_exceeded=true" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          # Check if any changes were made
+          if git diff --quiet; then
+            echo "::warning::No changes made"
+            echo "changes_made=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changes_made=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Step 6: Create PR
+      - name: Create pull request
+        id: pr
+        if: steps.select.outputs.selected == 'true' && steps.implement.outputs.changes_made == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          ISSUE_REPO: ${{ steps.select.outputs.issue_repo }}
+          ISSUE_NUMBER: ${{ steps.select.outputs.issue_number }}
+        run: |
+          cd target-repo
+
+          BRANCH=$(jq -r '.brief.branch_name' ../brief.json)
+          COMMIT_MSG=$(jq -r '.brief.commit_message' ../brief.json)
+          OBJECTIVE=$(jq -r '.brief.objective' ../brief.json)
+
+          git add -A
+          git -c user.name="nsalab-automation[bot]" \
+              -c user.email="nsalab-automation[bot]@users.noreply.github.com" \
+              commit -m "$COMMIT_MSG"
+          git push origin "$BRANCH"
+
+          PR_URL=$(gh pr create \
+            --repo "$ISSUE_REPO" \
+            --title "$COMMIT_MSG" \
+            --body "$(cat <<EOF
+          ## Summary
+
+          ${OBJECTIVE}
+
+          Closes #${ISSUE_NUMBER}
+
+          ## Type of change
+
+          - [x] Automated fix (engineering agent)
+
+          ## Test plan
+
+          - [ ] Review changes match the issue requirements
+          - [ ] Verify CI checks pass
+
+          ---
+          *Created by [engineering agent](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})*
+          EOF
+          )" \
+            --label "ai-generated")
+
+          echo "pr_url=${PR_URL}" >> "$GITHUB_OUTPUT"
+          echo "::notice::PR created: ${PR_URL}"
+
+      # Step 7: Post attempt record
+      - name: Record attempt
+        if: always() && steps.select.outputs.selected == 'true' && steps.brief.outputs.workable == 'true' && inputs.dry-run != true
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          ISSUE_REPO: ${{ steps.select.outputs.issue_repo }}
+          ISSUE_NUMBER: ${{ steps.select.outputs.issue_number }}
+        run: |
+          ATTEMPT=$(gh api "repos/${ISSUE_REPO}/issues/${ISSUE_NUMBER}/comments" \
+            --jq '[.[] | select(.body | test("<!-- agent:attempt:"))] | length' 2>/dev/null || echo "0")
+          ATTEMPT=$((ATTEMPT + 1))
+
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          OBJECTIVE=$(jq -r '.brief.objective' brief.json 2>/dev/null || echo "N/A")
+
+          if [[ -n "${{ steps.pr.outputs.pr_url }}" ]]; then
+            STATUS="completed"
+            RESULT="PR created: ${{ steps.pr.outputs.pr_url }}"
+          elif [[ "${{ steps.implement.outputs.changes_made }}" == "false" ]]; then
+            STATUS="failed"
+            RESULT="Agent made no changes to the codebase"
+          else
+            STATUS="failed"
+            RESULT="Implementation did not produce a PR"
+          fi
+
+          CHANGED=$(cd target-repo 2>/dev/null && git diff --name-only HEAD~1 2>/dev/null | sed 's/^/`/;s/$/`/' | paste -sd', ' || echo "none")
+
+          BODY="<!-- agent:attempt:${ATTEMPT} -->
+          **Agent attempt #${ATTEMPT}** — [run #${GITHUB_RUN_NUMBER}](${RUN_URL})
+          **Status:** ${STATUS}
+          **Brief:** ${OBJECTIVE}
+          **Result:** ${RESULT}
+          **Files touched:** ${CHANGED}
+          <!-- /agent:attempt:${ATTEMPT} -->"
+
+          gh api "repos/${ISSUE_REPO}/issues/${ISSUE_NUMBER}/comments" \
+            -f body="$BODY" >/dev/null
+
+      # Step 8: Session summary
+      - name: Session summary
+        if: always()
+        run: |
+          echo "## Engineering Agent Session" >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ "${{ steps.select.outputs.selected }}" != "true" ]]; then
+            echo "No eligible issues found." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          echo "**Issue:** ${{ steps.select.outputs.issue_repo }}#${{ steps.select.outputs.issue_number }}" >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ "${{ inputs.dry-run }}" == "true" ]]; then
+            echo "**Mode:** Dry run (gather + decide only)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          if [[ -f brief.json ]]; then
+            echo "**Workable:** ${{ steps.brief.outputs.workable }}" >> "$GITHUB_STEP_SUMMARY"
+            echo "**Confidence:** ${{ steps.brief.outputs.confidence }}" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "### Brief" >> "$GITHUB_STEP_SUMMARY"
+            jq -r '.brief | "**Objective:** \(.objective)\n\n**Plan:** \(.plan)\n\n**Key files:** \(.key_files | join(", "))"' brief.json >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+          fi
+
+          if [[ -n "${{ steps.pr.outputs.pr_url }}" ]]; then
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "### Result" >> "$GITHUB_STEP_SUMMARY"
+            echo "PR created: ${{ steps.pr.outputs.pr_url }}" >> "$GITHUB_STEP_SUMMARY"
+          fi
