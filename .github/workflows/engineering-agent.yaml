@@ -59,6 +59,14 @@ jobs:
           print(f\"timeout_minutes={agent['timeout-minutes']}\")
           excluded = json.dumps(agent['excluded-labels'])
           print(f'excluded_labels={excluded}')
+          eligible = json.dumps(agent['eligible-statuses'])
+          print(f'eligible_statuses={eligible}')
+          status = agent['status']
+          print(f\"status_backlog={status['backlog']}\")
+          print(f\"status_blocked={status['blocked']}\")
+          print(f\"status_in_progress={status['in-progress']}\")
+          print(f\"status_in_review={status['in-review']}\")
+          print(f\"status_done={status['done']}\")
           projects = json.dumps(config['projects'])
           print(f'projects={projects}')
           " >> "$GITHUB_OUTPUT"
@@ -69,6 +77,8 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           ORG: nsalab-tmn
           PROJECT_NUMBER: ${{ steps.config.outputs.project_number }}
+          STATUS_BLOCKED: ${{ steps.config.outputs.status_blocked }}
+          STATUS_BACKLOG: ${{ steps.config.outputs.status_backlog }}
         run: |
           echo "::group::Unblock check"
           UNBLOCKED=$(./scripts/check-blocked.sh)
@@ -83,6 +93,7 @@ jobs:
           ORG: nsalab-tmn
           PROJECT_NUMBER: ${{ steps.config.outputs.project_number }}
           EXCLUDED_LABELS: ${{ steps.config.outputs.excluded_labels }}
+          ELIGIBLE_STATUSES: ${{ steps.config.outputs.eligible_statuses }}
           MAX_ATTEMPTS: ${{ steps.config.outputs.max_attempts }}
         run: |
           echo "::group::Issue selection"
@@ -142,6 +153,7 @@ jobs:
           ISSUE_REPO: ${{ steps.select.outputs.issue_repo }}
           ISSUE_NUMBER: ${{ steps.select.outputs.issue_number }}
           PROJECT_NUMBER: ${{ steps.config.outputs.project_number }}
+          STATUS_IN_PROGRESS: ${{ steps.config.outputs.status_in_progress }}
         run: |
           echo "::group::Claiming issue"
 
@@ -172,7 +184,7 @@ jobs:
 
           PROJECT_ID=$(echo "$PROJECT_DATA" | jq -r '.data.organization.projectV2.id')
           STATUS_FIELD_ID=$(echo "$PROJECT_DATA" | jq -r '.data.organization.projectV2.field.id')
-          IN_PROGRESS_ID=$(echo "$PROJECT_DATA" | jq -r '.data.organization.projectV2.field.options[] | select(.name == "In Progress") | .id')
+          IN_PROGRESS_ID=$(echo "$PROJECT_DATA" | jq -r --arg s "$STATUS_IN_PROGRESS" '.data.organization.projectV2.field.options[] | select(.name == $s) | .id')
 
           # Find item on board
           ITEM_ID=$(gh api graphql -f query='
@@ -269,6 +281,7 @@ jobs:
           ISSUE_REPO: ${{ steps.select.outputs.issue_repo }}
           ISSUE_NUMBER: ${{ steps.select.outputs.issue_number }}
           PROJECT_NUMBER: ${{ steps.config.outputs.project_number }}
+          STATUS_BACKLOG: ${{ steps.config.outputs.status_backlog }}
         run: |
           BLOCKERS=$(jq -r '.blockers[] | "- **\(.type):** \(.detail)"' brief.json | head -10)
           ATTEMPT=$(gh api "repos/${ISSUE_REPO}/issues/${ISSUE_NUMBER}/comments" \
@@ -311,7 +324,7 @@ jobs:
 
           PROJECT_ID=$(echo "$PROJECT_DATA" | jq -r '.data.organization.projectV2.id')
           STATUS_FIELD_ID=$(echo "$PROJECT_DATA" | jq -r '.data.organization.projectV2.field.id')
-          BACKLOG_ID=$(echo "$PROJECT_DATA" | jq -r '.data.organization.projectV2.field.options[] | select(.name == "Backlog") | .id')
+          BACKLOG_ID=$(echo "$PROJECT_DATA" | jq -r --arg s "$STATUS_BACKLOG" '.data.organization.projectV2.field.options[] | select(.name == $s) | .id')
 
           ITEM_ID=$(gh api graphql -f query='
             query($issueId: ID!) {
