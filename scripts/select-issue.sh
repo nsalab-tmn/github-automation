@@ -29,7 +29,6 @@ echo "::notice::Required labels: ${REQUIRE_LABELS}" >&2
 
 # Paginate through all board items (write to temp file to avoid arg-list-too-long)
 ITEMS_FILE=$(mktemp)
-trap 'rm -f "$ITEMS_FILE"' EXIT
 echo "[]" > "$ITEMS_FILE"
 HAS_NEXT="true"
 CURSOR=""
@@ -91,8 +90,11 @@ done
 TOTAL=$(jq 'length' "$ITEMS_FILE")
 echo "::notice::Total board items: ${TOTAL}" >&2
 
-# Filter and rank candidates
-SELECTED=$(jq -r \
+# Filter and rank all candidates (output sorted array to file)
+CANDIDATES_FILE=$(mktemp)
+trap 'rm -f "$ITEMS_FILE" "$CANDIDATES_FILE"' EXIT
+
+jq \
   --argjson excluded "$EXCLUDED_LABELS" \
   --argjson eligible "$ELIGIBLE_STATUSES" \
   --argjson required "$REQUIRE_LABELS" '
@@ -121,8 +123,7 @@ SELECTED=$(jq -r \
       _created: .content.createdAt
     })
   | sort_by([._priority_rank, ._size_rank, ._type_rank, ._created])
-  | first // empty
-  | {
+  | [.[] | {
       item_id: .id,
       issue_id: .content.id,
       issue_number: .content.number,
@@ -136,59 +137,70 @@ SELECTED=$(jq -r \
       issue_type: (.content.issueType.name // ""),
       labels: [.content.labels.nodes[].name],
       assignees: [.content.assignees.nodes[].login]
-    }
-' "$ITEMS_FILE")
+    }]
+' "$ITEMS_FILE" > "$CANDIDATES_FILE"
 
-if [[ -z "$SELECTED" ]]; then
+CANDIDATE_COUNT=$(jq 'length' "$CANDIDATES_FILE")
+echo "::notice::${CANDIDATE_COUNT} candidate(s) after filtering" >&2
+
+if [[ "$CANDIDATE_COUNT" -eq 0 ]]; then
   echo "::notice::No eligible issues found on the board" >&2
   echo ""
   exit 0
 fi
 
-ISSUE_NUM=$(echo "$SELECTED" | jq -r '.issue_number')
-ISSUE_REPO=$(echo "$SELECTED" | jq -r '.repo')
-echo "::notice::Selected #${ISSUE_NUM} in ${ISSUE_REPO}: $(echo "$SELECTED" | jq -r '.title')" >&2
+# Validate candidates in rank order — pick the first one that passes all checks
+for i in $(seq 0 $((CANDIDATE_COUNT - 1))); do
+  CANDIDATE=$(jq ".[$i]" "$CANDIDATES_FILE")
+  ISSUE_NUM=$(echo "$CANDIDATE" | jq -r '.issue_number')
+  ISSUE_REPO=$(echo "$CANDIDATE" | jq -r '.repo')
+  ISSUE_ID=$(echo "$CANDIDATE" | jq -r '.issue_id')
 
-# Check attempt count from issue comments
-ATTEMPTS=$(gh api "repos/${ISSUE_REPO}/issues/${ISSUE_NUM}/comments" \
-  --jq '[.[] | select(.body | test("<!-- agent:attempt:"))] | length' 2>/dev/null || echo "0")
+  echo "::notice::Checking #${ISSUE_NUM} in ${ISSUE_REPO}: $(echo "$CANDIDATE" | jq -r '.title')" >&2
 
-if [[ "$ATTEMPTS" -ge "$MAX_ATTEMPTS" ]]; then
-  echo "::notice::Issue #${ISSUE_NUM} has ${ATTEMPTS} attempts (max: ${MAX_ATTEMPTS}), skipping" >&2
-  echo ""
-  exit 0
-fi
+  # Check failed attempt count (only count failed/blocked, not completed)
+  FAILED_ATTEMPTS=$(gh api "repos/${ISSUE_REPO}/issues/${ISSUE_NUM}/comments" \
+    --jq '[.[] | select(.body | test("<!-- agent:attempt:")) | select(.body | test("\\*\\*Status:\\*\\* (failed|blocked|not-workable)"))] | length' 2>/dev/null || echo "0")
 
-# Check for existing open PRs linked to this issue
-OPEN_PRS=$(gh pr list --repo "$ISSUE_REPO" --state open --search "closes #${ISSUE_NUM}" --json number --jq 'length' 2>/dev/null || echo "0")
+  if [[ "$FAILED_ATTEMPTS" -ge "$MAX_ATTEMPTS" ]]; then
+    echo "::notice::  Skipping: ${FAILED_ATTEMPTS} failed attempts (max: ${MAX_ATTEMPTS})" >&2
+    continue
+  fi
 
-if [[ "$OPEN_PRS" -gt 0 ]]; then
-  echo "::notice::Issue #${ISSUE_NUM} already has an open PR, skipping" >&2
-  echo ""
-  exit 0
-fi
+  # Check for existing open PRs linked to this issue
+  OPEN_PRS=$(gh pr list --repo "$ISSUE_REPO" --state open --search "closes #${ISSUE_NUM}" --json number --jq 'length' 2>/dev/null || echo "0")
 
-# Check blockedBy dependencies
-ISSUE_ID=$(echo "$SELECTED" | jq -r '.issue_id')
-if [[ -n "$ISSUE_ID" && "$ISSUE_ID" != "" ]]; then
-  BLOCKER_COUNT=$(gh api graphql -f query='
-    query($issueId: ID!) {
-      node(id: $issueId) {
-        ... on Issue {
-          blockedBy(first: 50) {
-            nodes { state }
+  if [[ "$OPEN_PRS" -gt 0 ]]; then
+    echo "::notice::  Skipping: already has an open PR" >&2
+    continue
+  fi
+
+  # Check blockedBy dependencies
+  if [[ -n "$ISSUE_ID" && "$ISSUE_ID" != "" ]]; then
+    BLOCKER_COUNT=$(gh api graphql -f query='
+      query($issueId: ID!) {
+        node(id: $issueId) {
+          ... on Issue {
+            blockedBy(first: 50) {
+              nodes { state }
+            }
           }
         }
       }
-    }
-  ' -f issueId="$ISSUE_ID" 2>/dev/null \
-    | jq '[.data.node.blockedBy.nodes[] | select(.state == "OPEN")] | length' 2>/dev/null || echo "0")
+    ' -f issueId="$ISSUE_ID" 2>/dev/null \
+      | jq '[.data.node.blockedBy.nodes[] | select(.state == "OPEN")] | length' 2>/dev/null || echo "0")
 
-  if [[ "$BLOCKER_COUNT" -gt 0 ]]; then
-    echo "::notice::Issue #${ISSUE_NUM} has ${BLOCKER_COUNT} open blocker(s), skipping" >&2
-    echo ""
-    exit 0
+    if [[ "$BLOCKER_COUNT" -gt 0 ]]; then
+      echo "::notice::  Skipping: ${BLOCKER_COUNT} open blocker(s)" >&2
+      continue
+    fi
   fi
-fi
 
-echo "$SELECTED"
+  # This candidate passed all checks
+  echo "::notice::Selected #${ISSUE_NUM} in ${ISSUE_REPO}: $(echo "$CANDIDATE" | jq -r '.title')" >&2
+  echo "$CANDIDATE"
+  exit 0
+done
+
+echo "::notice::All candidates were filtered out by validation checks" >&2
+echo ""
