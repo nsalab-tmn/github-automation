@@ -34,7 +34,8 @@ github-automation/
 │   └── workflows/               Reusable workflows (the primary deliverable)
 ├── docs/
 │   ├── adoption.md              How to adopt workflows in your repo
-│   └── conventions.md           Technical reference, workflow catalog
+│   ├── conventions.md           Technical reference, workflow catalog
+│   └── governance.md            4-layer enforcement architecture (L0-L3)
 ├── scripts/
 │   └── scaffold-repo.sh         Repo scaffolding logic
 ├── templates/                   Repo scaffolding templates
