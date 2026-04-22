@@ -1,4 +1,4 @@
-name: reusable: issue-defaults
+name: reusable - issue-defaults
 
 on:
   workflow_call:

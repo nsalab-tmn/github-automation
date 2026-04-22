@@ -1,4 +1,4 @@
-name: reusable: auto-assign
+name: reusable - auto-assign
 
 on:
   workflow_call:

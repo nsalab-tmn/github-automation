@@ -26,7 +26,7 @@ Callers use the action name without the `reusable-` prefix: `housekeeping.yaml`,
 ### Display names (`name:` field)
 
 - **Callers**: `lowercase-slug` matching the filename — e.g., `housekeeping`, `stale-check`
-- **Reusable workflows**: `reusable: <slug>` — e.g., `reusable: auto-assign`, `reusable: project-sync`
+- **Reusable workflows**: `reusable - <slug>` — e.g., `reusable - auto-assign`, `reusable - project-sync`
 
 This groups reusable workflows visually in the Actions sidebar, separate from callers.
 

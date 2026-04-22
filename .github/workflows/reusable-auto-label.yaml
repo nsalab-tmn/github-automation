@@ -1,4 +1,4 @@
-name: reusable: auto-label
+name: reusable - auto-label
 
 on:
   workflow_call:

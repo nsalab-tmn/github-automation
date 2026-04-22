@@ -1,4 +1,4 @@
-name: reusable: pinned-sync
+name: reusable - pinned-sync
 
 on:
   workflow_call:

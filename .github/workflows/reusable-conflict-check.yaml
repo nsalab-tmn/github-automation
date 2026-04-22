@@ -1,4 +1,4 @@
-name: reusable: conflict-check
+name: reusable - conflict-check
 
 on:
   workflow_call:

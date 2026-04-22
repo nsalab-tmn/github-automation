@@ -1,4 +1,4 @@
-name: reusable: stale-pr
+name: reusable - stale-pr
 
 on:
   workflow_call:

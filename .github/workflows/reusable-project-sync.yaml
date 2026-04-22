@@ -1,4 +1,4 @@
-name: reusable: project-sync
+name: reusable - project-sync
 
 on:
   workflow_call:

@@ -1,4 +1,4 @@
-name: reusable: structural-check
+name: reusable - structural-check
 
 on:
   workflow_call:
