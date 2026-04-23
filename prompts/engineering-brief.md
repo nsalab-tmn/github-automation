@@ -23,6 +23,10 @@ Set `workable: false` when:
 - The issue has cross-repo dependencies that must be resolved first
 - The scope is clearly too large (major architectural change, new system design)
 - The issue requires access to external systems not available in the repo
+- The fix cannot be delivered as a pull request — for example, editing a GitHub
+  issue body, changing project board settings, modifying labels, or any action
+  that requires GitHub API calls rather than file changes in the repository.
+  Use blocker type `needs_human_decision` for these cases.
 
 Set `confidence: high` when the issue has clear acceptance criteria, the files to
 change are identifiable, and the change follows established patterns.
@@ -68,3 +72,7 @@ The brief is the implementing agent's only context. Make it actionable:
    body provide clear guidance — incorporate them into the plan.
 7. Keep the brief concise — the implementing agent has limited context window.
    Aim for under 3000 tokens total across all brief fields.
+8. The implementing agent can ONLY modify files in the repository and create a PR.
+   It cannot call GitHub API, edit issues, change project board settings, create
+   labels, or perform any action outside the file system. If the fix requires any
+   of these, set `workable: false` with blocker type `needs_human_decision`.
