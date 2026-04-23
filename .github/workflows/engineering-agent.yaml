@@ -307,7 +307,7 @@ jobs:
           ISSUE_REPO: ${{ steps.select.outputs.issue_repo }}
           ISSUE_NUMBER: ${{ steps.select.outputs.issue_number }}
           PROJECT_NUMBER: ${{ steps.config.outputs.project_number }}
-          STATUS_BACKLOG: ${{ steps.config.outputs.status_backlog }}
+          STATUS_BLOCKED: ${{ steps.config.outputs.status_blocked }}
         run: |
           BLOCKERS=$(jq -r '.blockers // [] | .[] | "- **\(.type):** \(.detail)"' brief.json | head -10)
           ATTEMPT=$(gh api "repos/${ISSUE_REPO}/issues/${ISSUE_NUMBER}/comments" \
@@ -331,7 +331,7 @@ jobs:
           gh api "repos/${ISSUE_REPO}/issues/${ISSUE_NUMBER}/labels" \
             -f "labels[]=needs-triage" >/dev/null 2>&1 || true
 
-          # Move back to Backlog
+          # Move to Blocked (requires human attention, not agent-retryable)
           ISSUE_ID=$(jq -r '.issue_id' selected-issue.json)
           PROJECT_DATA=$(gh api graphql -f query='
             query($org: String!, $number: Int!) {
@@ -351,7 +351,7 @@ jobs:
 
           PROJECT_ID=$(echo "$PROJECT_DATA" | jq -r '.data.organization.projectV2.id')
           STATUS_FIELD_ID=$(echo "$PROJECT_DATA" | jq -r '.data.organization.projectV2.field.id')
-          BACKLOG_ID=$(echo "$PROJECT_DATA" | jq -r --arg s "$STATUS_BACKLOG" '.data.organization.projectV2.field.options[] | select(.name == $s) | .id')
+          BLOCKED_ID=$(echo "$PROJECT_DATA" | jq -r --arg s "$STATUS_BLOCKED" '.data.organization.projectV2.field.options[] | select(.name == $s) | .id')
 
           ITEM_ID=$(gh api graphql -f query='
             query($issueId: ID!) {
@@ -375,10 +375,10 @@ jobs:
                 }) { projectV2Item { id } }
               }
             ' -f projectId="$PROJECT_ID" -f itemId="$ITEM_ID" \
-              -f fieldId="$STATUS_FIELD_ID" -f optionId="$BACKLOG_ID" >/dev/null
+              -f fieldId="$STATUS_FIELD_ID" -f optionId="$BLOCKED_ID" >/dev/null
           fi
 
-          echo "::warning::Issue deemed not workable — moved to Backlog with needs-triage"
+          echo "::warning::Issue deemed not workable — moved to Blocked with needs-triage"
 
       # Step 5: Implement (Claude Code CLI)
       - name: Checkout target repo
