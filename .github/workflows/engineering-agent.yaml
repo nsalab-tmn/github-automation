@@ -424,7 +424,7 @@ jobs:
           - Keep changes minimal and focused on the objective
           - Do not add unrelated improvements
           - Do not modify files outside this repository" \
-            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(git diff:*),Bash(git status)" \
+            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(git diff:*),Bash(git status),Bash(mkdir:*),Bash(ls:*)" \
             --max-turns 30
 
           # Stage all changes (including new untracked files) for accurate counting
