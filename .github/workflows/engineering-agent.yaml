@@ -276,9 +276,9 @@ jobs:
           jq '.brief' brief.json
           echo "::endgroup::"
 
-      # Handle not-workable
+      # Handle not-workable (skipped in dry-run)
       - name: Handle not-workable issue
-        if: steps.select.outputs.selected == 'true' && steps.brief.outputs.workable == 'false'
+        if: steps.select.outputs.selected == 'true' && steps.brief.outputs.workable == 'false' && inputs.dry-run != true
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           ISSUE_REPO: ${{ steps.select.outputs.issue_repo }}
@@ -286,16 +286,17 @@ jobs:
           PROJECT_NUMBER: ${{ steps.config.outputs.project_number }}
           STATUS_BACKLOG: ${{ steps.config.outputs.status_backlog }}
         run: |
-          BLOCKERS=$(jq -r '.blockers[] | "- **\(.type):** \(.detail)"' brief.json | head -10)
+          BLOCKERS=$(jq -r '.blockers // [] | .[] | "- **\(.type):** \(.detail)"' brief.json | head -10)
           ATTEMPT=$(gh api "repos/${ISSUE_REPO}/issues/${ISSUE_NUMBER}/comments" \
             --jq '[.[] | select(.body | test("<!-- agent:attempt:"))] | length' 2>/dev/null || echo "0")
           ATTEMPT=$((ATTEMPT + 1))
 
           RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          OBJECTIVE=$(jq -r 'if .brief | type == "object" then .brief.objective // "N/A" else .brief // "N/A" end' brief.json)
           BODY="<!-- agent:attempt:${ATTEMPT} -->
           **Agent attempt #${ATTEMPT}** — [run #${GITHUB_RUN_NUMBER}](${RUN_URL})
           **Status:** not-workable
-          **Brief:** $(jq -r '.brief.objective' brief.json)
+          **Brief:** ${OBJECTIVE}
           **Blockers:**
           ${BLOCKERS}
           <!-- /agent:attempt:${ATTEMPT} -->"
