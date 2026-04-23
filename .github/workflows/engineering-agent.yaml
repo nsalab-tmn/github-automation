@@ -427,24 +427,29 @@ jobs:
             --allowedTools "Read,Edit,Write,Glob,Grep,Bash(git diff:*),Bash(git status)" \
             --max-turns 30
 
-          # Check guardrails
-          CHANGED_FILES=$(git diff --name-only | wc -l)
-          DIFF_LINES=$(git diff --stat | tail -1 | grep -oP '\d+ insertion' | grep -oP '\d+' || echo "0")
+          # Stage all changes (including new untracked files) for accurate counting
+          git add -A
+
+          # Check guardrails against staged changes
+          CHANGED_FILES=$(git diff --cached --name-only | wc -l)
+          DIFF_LINES=$(git diff --cached --stat | tail -1 | grep -oP '\d+ insertion' | grep -oP '\d+' || echo "0")
 
           if [[ "$CHANGED_FILES" -gt "$MAX_FILE_COUNT" ]]; then
             echo "::error::Changed ${CHANGED_FILES} files (max: ${MAX_FILE_COUNT})"
+            git reset HEAD >/dev/null
             echo "guardrail_exceeded=true" >> "$GITHUB_OUTPUT"
             exit 1
           fi
 
           if [[ "$DIFF_LINES" -gt "$MAX_DIFF_LINES" ]]; then
             echo "::error::Diff is ${DIFF_LINES} lines (max: ${MAX_DIFF_LINES})"
+            git reset HEAD >/dev/null
             echo "guardrail_exceeded=true" >> "$GITHUB_OUTPUT"
             exit 1
           fi
 
-          # Check if any changes were made
-          if git diff --quiet; then
+          # Check if any changes were made (staged)
+          if git diff --cached --quiet; then
             echo "::warning::No changes made"
             echo "changes_made=false" >> "$GITHUB_OUTPUT"
           else
