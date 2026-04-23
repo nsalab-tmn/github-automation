@@ -12,8 +12,24 @@ You will receive:
 5. Pinned issue (current project state)
 6. Recent merged PRs (for pattern reference)
 
-Assess workability and produce a structured brief that gives the implementing agent
-everything it needs to start coding immediately — no orientation needed.
+First verify whether the problem still exists, then assess workability and produce
+a structured brief that gives the implementing agent everything it needs to start
+coding immediately — no orientation needed.
+
+## Verification: does the problem still exist?
+
+Before assessing workability, check whether the issue is already resolved by
+examining the current repo state (file tree, recent PRs, recent commits).
+
+Set `already_resolved: true` when:
+- For drift-detect issues: the "Expected" state now matches the current repo
+  state (e.g., the missing file now exists, the config was corrected)
+- For bug reports: recent commits or PRs already address the described problem
+- For any issue: the file tree or repo state shows the fix is already in place
+
+When `already_resolved: true`, populate `resolution_comment` with specific
+evidence (which files exist, which PR fixed it, what the current state is).
+Still populate the brief for context, but set `workable: false`.
 
 ## Workability assessment
 

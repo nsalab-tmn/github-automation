@@ -267,18 +267,41 @@ jobs:
             schemas/compile-brief.json \
             > brief.json
 
+          ALREADY_RESOLVED=$(jq -r '.already_resolved' brief.json)
           WORKABLE=$(jq -r '.workable' brief.json)
           CONFIDENCE=$(jq -r '.confidence' brief.json)
+          echo "already_resolved=${ALREADY_RESOLVED}" >> "$GITHUB_OUTPUT"
           echo "workable=${WORKABLE}" >> "$GITHUB_OUTPUT"
           echo "confidence=${CONFIDENCE}" >> "$GITHUB_OUTPUT"
 
-          echo "::notice::Workable: ${WORKABLE}, Confidence: ${CONFIDENCE}"
+          echo "::notice::Already resolved: ${ALREADY_RESOLVED}, Workable: ${WORKABLE}, Confidence: ${CONFIDENCE}"
           jq '.brief' brief.json
           echo "::endgroup::"
 
+      # Handle already-resolved issue (skipped in dry-run)
+      - name: Handle already-resolved issue
+        if: steps.select.outputs.selected == 'true' && steps.brief.outputs.already_resolved == 'true' && inputs.dry-run != true
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          ISSUE_REPO: ${{ steps.select.outputs.issue_repo }}
+          ISSUE_NUMBER: ${{ steps.select.outputs.issue_number }}
+        run: |
+          RESOLUTION=$(jq -r '.resolution_comment // "No details provided"' brief.json)
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+          gh api "repos/${ISSUE_REPO}/issues/${ISSUE_NUMBER}/comments" \
+            -f body="**Issue already resolved** — verified by [engineering agent run #${GITHUB_RUN_NUMBER}](${RUN_URL})
+
+          ${RESOLUTION}
+
+          Closing as the problem no longer exists." >/dev/null
+
+          gh issue close "$ISSUE_NUMBER" --repo "$ISSUE_REPO" --reason completed
+          echo "::notice::Issue closed as already resolved"
+
       # Handle not-workable (skipped in dry-run)
       - name: Handle not-workable issue
-        if: steps.select.outputs.selected == 'true' && steps.brief.outputs.workable == 'false' && inputs.dry-run != true
+        if: steps.select.outputs.selected == 'true' && steps.brief.outputs.already_resolved != 'true' && steps.brief.outputs.workable == 'false' && inputs.dry-run != true
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           ISSUE_REPO: ${{ steps.select.outputs.issue_repo }}

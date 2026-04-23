@@ -4,9 +4,17 @@
   "input_schema": {
     "type": "object",
     "properties": {
+      "already_resolved": {
+        "type": "boolean",
+        "description": "True if the problem described in the issue no longer exists (verified against current repo state). If true, the issue should be closed, not implemented."
+      },
+      "resolution_comment": {
+        "type": "string",
+        "description": "When already_resolved is true, explain what evidence shows the problem is fixed (e.g. which files now exist, which config is correct)"
+      },
       "workable": {
         "type": "boolean",
-        "description": "Whether the issue can be implemented by an automated agent"
+        "description": "Whether the issue can be implemented by an automated agent. Ignored if already_resolved is true."
       },
       "confidence": {
         "type": "string",
@@ -77,6 +85,6 @@
         "required": ["objective", "repo_context", "plan", "key_files", "conventions", "gotchas", "branch_name", "commit_message"]
       }
     },
-    "required": ["workable", "confidence", "blockers", "brief"]
+    "required": ["already_resolved", "workable", "confidence", "blockers", "brief"]
   }
 }
