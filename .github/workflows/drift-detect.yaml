@@ -5,6 +5,12 @@ on:
   schedule:
     - cron: '0 10 * * 1'  # Monday 10am UTC
   workflow_dispatch:
+    inputs:
+      dry-run:
+        description: 'Dry run — gather + decide, log decisions without creating issues'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -86,8 +92,35 @@ jobs:
             fi
           done
 
+      - name: Gather compliance state
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          ORG: nsalab-tmn
+        run: |
+          # Read project number from engineering-agent config
+          PROJECT_NUMBER=$(python3 -c "import yaml; print(yaml.safe_load(open('config/engineering-agent.yaml'))['agent']['project-number'])")
+          export PROJECT_NUMBER
+
+          echo "::group::Gathering compliance state (project #${PROJECT_NUMBER})"
+          COMPLIANCE_STATE="{}"
+          PROJECT_COUNT=$(jq length projects.json)
+          for i in $(seq 0 $((PROJECT_COUNT - 1))); do
+            REPOS=$(jq -r ".[$i].repos[]" projects.json)
+            for repo in $REPOS; do
+              export REPO="$repo"
+              state=$(./scripts/gather-compliance-state.sh)
+              # Write per-repo state to file to avoid arg-list-too-long
+              echo "$state" > "compliance-${repo//\//-}.json"
+              COMPLIANCE_STATE=$(jq --arg r "$repo" --slurpfile s "compliance-${repo//\//-}.json" '. + {($r): $s[0]}' <<< "$COMPLIANCE_STATE")
+            done
+          done
+          echo "$COMPLIANCE_STATE" > compliance-state.json
+          echo "::endgroup::"
+
       - name: Execute actions
         if: always() && hashFiles('all-findings.json') != ''
+        env:
+          DRY_RUN: ${{ inputs.dry-run || 'false' }}
         uses: actions/github-script@v8
         with:
           github-token: ${{ steps.app-token.outputs.token }}
@@ -95,6 +128,12 @@ jobs:
             const fs = require('fs');
             const allFindings = JSON.parse(fs.readFileSync('all-findings.json', 'utf8'));
             const projects = JSON.parse(fs.readFileSync('projects.json', 'utf8'));
+            const complianceState = fs.existsSync('compliance-state.json')
+              ? JSON.parse(fs.readFileSync('compliance-state.json', 'utf8'))
+              : {};
+            const dryRun = process.env.DRY_RUN === 'true';
+
+            if (dryRun) core.notice('DRY RUN — no issues will be created or modified');
 
             // Build lookup of valid repos from config for normalization
             const validRepos = new Set();
@@ -103,8 +142,38 @@ jobs:
               validRepos.add(project['knowledge-base']);
             }
 
+            // Fetch project board IDs once (for adding new issues to board)
+            let projectId, statusFieldId, backlogOptionId;
+            try {
+              const projectNumber = JSON.parse(fs.readFileSync('config/engineering-agent.yaml', 'utf8')
+                .match(/project-number:\s*(\d+)/)?.[0]?.replace('project-number: ', '') || '6');
+              const pData = await github.graphql(`
+                query($org: String!, $number: Int!) {
+                  organization(login: $org) {
+                    projectV2(number: $number) {
+                      id
+                      field(name: "Status") {
+                        ... on ProjectV2SingleSelectField {
+                          id
+                          options { id name }
+                        }
+                      }
+                    }
+                  }
+                }
+              `, { org: 'nsalab-tmn', number: projectNumber });
+              projectId = pData.organization.projectV2.id;
+              statusFieldId = pData.organization.projectV2.field.id;
+              backlogOptionId = pData.organization.projectV2.field.options.find(o => o.name === 'Backlog')?.id;
+            } catch (e) {
+              core.warning(`Could not fetch project board IDs: ${e.message}`);
+            }
+
             let totalCreated = 0;
             let totalSkipped = 0;
+            let totalSuppressed = 0;
+            let totalBoardAdded = 0;
+            const decisions = []; // for dry-run summary
 
             for (const projectFindings of allFindings) {
               const project = projectFindings.project;
@@ -113,37 +182,61 @@ jobs:
                 // Normalize repo: Claude sometimes outputs short names
                 let repoFull = finding.repo;
                 if (!repoFull.includes('/')) {
-                  // Try to match against known repos from config
                   const match = [...validRepos].find(r => r.endsWith(`/${repoFull}`) || r.endsWith(`-${repoFull}`) || r === repoFull);
                   repoFull = match || `nsalab-tmn/${repoFull}`;
                 }
                 const [owner, repo] = repoFull.split('/');
-                // Deterministic dedup key from schema-constrained fields
                 const convFile = finding.convention_file.toLowerCase();
                 const findingId = `${finding.type}:${convFile}`;
                 const marker = `<!-- drift:${findingId} -->`;
 
-                // Check for existing open issue with same marker
-                // Label may not exist yet — search all open issues if needed
-                let duplicate = null;
-                try {
-                  const existing = await github.rest.issues.listForRepo({
-                    owner, repo,
-                    state: 'open',
-                    labels: 'compliance',
-                    per_page: 100,
-                  });
-                  duplicate = existing.data.find(i => i.body && i.body.includes(marker));
-                } catch {
-                  // Label doesn't exist yet — no duplicates possible
-                }
-                if (duplicate) {
-                  core.info(`Skipped duplicate: ${finding.repo} — ${finding.convention_file} (existing #${duplicate.number})`);
+                // --- Enhanced filtering using compliance state ---
+                const repoState = complianceState[repoFull] || {};
+                const openIssues = repoState.open_compliance_issues || [];
+                const closedIssues = repoState.recently_closed_compliance || [];
+
+                // Check 1: Open issue with same marker
+                const existingOpen = openIssues.find(i => i.marker === findingId);
+                if (existingOpen) {
+                  // Check 1a: Has needs-triage label
+                  if (existingOpen.labels?.includes('needs-triage')) {
+                    core.info(`Suppressed (needs-triage): ${repoFull} — ${convFile} (existing #${existingOpen.number})`);
+                    decisions.push({ repo: repoFull, finding: convFile, action: 'skip-needs-triage', issue: existingOpen.number });
+                    totalSuppressed++;
+                    continue;
+                  }
+                  // Check 1b: Has open PR
+                  if (existingOpen.has_open_pr) {
+                    core.info(`Suppressed (PR open): ${repoFull} — ${convFile} (existing #${existingOpen.number})`);
+                    decisions.push({ repo: repoFull, finding: convFile, action: 'skip-pr-open', issue: existingOpen.number });
+                    totalSuppressed++;
+                    continue;
+                  }
+                  // Default: existing open issue without PR or triage
+                  core.info(`Skipped duplicate: ${repoFull} — ${convFile} (existing #${existingOpen.number})`);
+                  decisions.push({ repo: repoFull, finding: convFile, action: 'skip-duplicate', issue: existingOpen.number });
                   totalSkipped++;
                   continue;
                 }
 
-                // Create issue
+                // Check 2: Recently closed issue with same marker (completed within suppression window)
+                const recentlyClosed = closedIssues.find(i => i.marker === findingId && i.state_reason === 'completed');
+                if (recentlyClosed) {
+                  core.info(`Suppressed (recently fixed): ${repoFull} — ${convFile} (closed #${recentlyClosed.number} at ${recentlyClosed.closed_at})`);
+                  decisions.push({ repo: repoFull, finding: convFile, action: 'skip-recently-fixed', issue: recentlyClosed.number });
+                  totalSuppressed++;
+                  continue;
+                }
+
+                // --- No suppression — create issue ---
+                decisions.push({ repo: repoFull, finding: convFile, action: 'create' });
+
+                if (dryRun) {
+                  core.info(`[DRY RUN] Would create issue in ${repoFull}: Convention ${finding.type}: ${convFile}`);
+                  totalCreated++;
+                  continue;
+                }
+
                 const severityEmoji = { high: '🔴', medium: '🟡', low: '🔵' }[finding.severity] || '⚪';
                 const body = [
                   marker,
@@ -177,19 +270,51 @@ jobs:
                     });
                   }
 
-                  // Deterministic title from stable components (not Claude's free text)
                   const issueTitle = `Convention ${finding.type}: ${convFile}`;
-
-                  await github.rest.issues.create({
+                  const created = await github.rest.issues.create({
                     owner, repo,
                     title: issueTitle,
                     body,
                     labels: ['compliance'],
                   });
-                  core.info(`Created issue in ${finding.repo}: ${finding.convention_file}`);
+                  core.info(`Created issue in ${repoFull}: ${convFile} (#${created.data.number})`);
                   totalCreated++;
+
+                  // Add to project board
+                  if (projectId && created.data.node_id) {
+                    try {
+                      const addResult = await github.graphql(`
+                        mutation($projectId: ID!, $contentId: ID!) {
+                          addProjectV2ItemById(input: {projectId: $projectId, contentId: $contentId}) {
+                            item { id }
+                          }
+                        }
+                      `, { projectId, contentId: created.data.node_id });
+
+                      // Set status to Backlog
+                      if (backlogOptionId && addResult.addProjectV2ItemById?.item?.id) {
+                        await github.graphql(`
+                          mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
+                            updateProjectV2ItemFieldValue(input: {
+                              projectId: $projectId, itemId: $itemId, fieldId: $fieldId,
+                              value: { singleSelectOptionId: $optionId }
+                            }) { projectV2Item { id } }
+                          }
+                        `, {
+                          projectId,
+                          itemId: addResult.addProjectV2ItemById.item.id,
+                          fieldId: statusFieldId,
+                          optionId: backlogOptionId,
+                        });
+                      }
+                      core.info(`Added #${created.data.number} to project board`);
+                      totalBoardAdded++;
+                    } catch (e) {
+                      core.warning(`Failed to add #${created.data.number} to board: ${e.message}`);
+                    }
+                  }
                 } catch (error) {
-                  core.warning(`Failed to create issue in ${finding.repo}: ${error.message}`);
+                  core.warning(`Failed to create issue in ${repoFull}: ${error.message}`);
                 }
               }
             }
@@ -203,17 +328,17 @@ jobs:
               per_page: 1,
             });
 
-            if (pinnedIssues.data.length > 0) {
+            if (pinnedIssues.data.length > 0 && !dryRun) {
               const pinned = pinnedIssues.data[0];
-              const marker = '<!-- drift-review -->';
+              const summaryMarker = '<!-- drift-review -->';
 
-              let summaryBody = `${marker}\n### Drift Detection Summary\n\n`;
+              let summaryBody = `${summaryMarker}\n### Drift Detection Summary\n\n`;
               for (const pf of allFindings) {
                 const emoji = pf.findings.length === 0 ? '🟢' : '🟡';
                 summaryBody += `**${pf.project}:** ${emoji} ${pf.findings.length} finding(s)\n`;
                 summaryBody += `${pf.summary}\n\n`;
               }
-              summaryBody += `Created ${totalCreated} issue(s), skipped ${totalSkipped} duplicate(s).\n`;
+              summaryBody += `Created ${totalCreated}, skipped ${totalSkipped} duplicate(s), suppressed ${totalSuppressed} (triage/PR/recent-fix), added ${totalBoardAdded} to board.\n`;
               summaryBody += `\n<sub>Last run: ${new Date().toISOString()}</sub>`;
 
               const comments = await github.paginate(github.rest.issues.listComments, {
@@ -222,7 +347,7 @@ jobs:
                 issue_number: pinned.number,
               });
 
-              const existing = comments.find(c => c.body && c.body.includes(marker));
+              const existing = comments.find(c => c.body && c.body.includes(summaryMarker));
 
               if (existing) {
                 await github.rest.issues.updateComment({
@@ -241,5 +366,16 @@ jobs:
               }
             }
 
-            core.summary.addRaw(`Created ${totalCreated} issue(s), skipped ${totalSkipped} duplicate(s)`);
+            // Step summary (always, including dry-run)
+            let summary = dryRun ? '## Drift Detection — DRY RUN\n\n' : '## Drift Detection Results\n\n';
+            summary += `Created ${totalCreated}, skipped ${totalSkipped}, suppressed ${totalSuppressed}, board-added ${totalBoardAdded}\n\n`;
+
+            if (decisions.length > 0) {
+              summary += '| Repo | Finding | Action | Issue |\n|------|---------|--------|-------|\n';
+              for (const d of decisions) {
+                summary += `| ${d.repo} | ${d.finding} | ${d.action} | ${d.issue ? '#' + d.issue : '—'} |\n`;
+              }
+            }
+
+            core.summary.addRaw(summary);
             await core.summary.write();
