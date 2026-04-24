@@ -27,7 +27,8 @@ resource "github_organization_ruleset" "this" {
   }
 
   rules {
-    non_fast_forward = lookup(var.rules, "non_fast_forward", true)
+    non_fast_forward = lookup(var.rules, "non_fast_forward", false)
+    deletion         = lookup(var.rules, "deletion", false)
 
     dynamic "pull_request" {
       for_each = var.rules.pull_request != null ? [var.rules.pull_request] : []
@@ -38,6 +39,7 @@ resource "github_organization_ruleset" "this" {
         require_last_push_approval        = lookup(pull_request.value, "require_last_push_approval", false)
         required_review_thread_resolution = lookup(pull_request.value, "required_review_thread_resolution", false)
         dismiss_stale_reviews_on_push     = lookup(pull_request.value, "dismiss_stale_reviews_on_push", false)
+        allowed_merge_methods             = lookup(pull_request.value, "allowed_merge_methods", ["merge", "squash", "rebase"])
       }
     }
 
@@ -55,6 +57,17 @@ resource "github_organization_ruleset" "this" {
             integration_id = lookup(required_check.value, "integration_id", null)
           }
         }
+      }
+    }
+
+    dynamic "branch_name_pattern" {
+      for_each = var.rules.branch_name_pattern != null ? [var.rules.branch_name_pattern] : []
+
+      content {
+        operator = branch_name_pattern.value.operator
+        pattern  = branch_name_pattern.value.pattern
+        name     = lookup(branch_name_pattern.value, "name", "")
+        negate   = lookup(branch_name_pattern.value, "negate", false)
       }
     }
   }

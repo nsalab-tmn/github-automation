@@ -53,12 +53,14 @@ variable "bypass_actors" {
 variable "rules" {
   type = object({
     non_fast_forward = optional(bool)
+    deletion         = optional(bool)
     pull_request = optional(object({
       required_approving_review_count   = optional(number, 0)
       require_code_owner_review         = optional(bool, false)
       require_last_push_approval        = optional(bool, false)
       required_review_thread_resolution = optional(bool, false)
       dismiss_stale_reviews_on_push     = optional(bool, false)
+      allowed_merge_methods             = optional(list(string))
     }))
     required_status_checks = optional(object({
       strict = optional(bool, false)
@@ -66,6 +68,12 @@ variable "rules" {
         context        = string
         integration_id = optional(number)
       })), [])
+    }))
+    branch_name_pattern = optional(object({
+      operator = string
+      pattern  = string
+      name     = optional(string, "")
+      negate   = optional(bool, false)
     }))
   })
   description = "Rules to enforce"

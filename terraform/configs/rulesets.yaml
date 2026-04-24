@@ -7,12 +7,13 @@ rulesets:
         include: ["~DEFAULT_BRANCH"]
       repository_name:
         include: ["~ALL"]
-    # No bypass_actors — nobody bypasses, including admins
     rules:
       non_fast_forward: true
+      deletion: true
       pull_request:
         required_approving_review_count: 0
         dismiss_stale_reviews_on_push: false
+        allowed_merge_methods: ["squash"]
 
   - name: require-pr-validation
     target: branch
@@ -28,3 +29,17 @@ rulesets:
         strict: false
         checks:
           - context: "PR Validation"
+
+  - name: branch-naming-convention
+    target: branch
+    enforcement: active
+    conditions:
+      ref_name:
+        include: ["refs/heads/*"]
+        exclude: ["~DEFAULT_BRANCH"]
+      repository_name:
+        include: ["~ALL"]
+    rules:
+      branch_name_pattern:
+        operator: regex
+        pattern: "^(feature|fix|docs|infra|cleanup)/[0-9]+-[a-z0-9-]+$"
