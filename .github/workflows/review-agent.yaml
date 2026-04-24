@@ -1,0 +1,125 @@
+name: review-agent
+run-name: "[${{github.run_number}}] Review agent [${{github.event_name}}]"
+
+on:
+  schedule:
+    - cron: '0 9 * * 1-5'  # weekdays 9am UTC, 1h after engineering-agent
+  workflow_dispatch:
+    inputs:
+      pr-url:
+        description: 'Optional: specific PR URL to review (skips selection)'
+        required: false
+        type: string
+      dry-run:
+        description: 'Dry run — gather + decide only, skip posting review'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: review-agent
+  cancel-in-progress: false
+
+jobs:
+  review-agent:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout github-automation
+        uses: actions/checkout@v5
+
+      - name: Generate app token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ secrets.APP_CLIENT_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: nsalab-tmn
+
+      - name: Install dependencies
+        run: pip install anthropic pyyaml
+
+      - name: Parse config
+        id: config
+        env:
+          CONFIG_FILE: config/review-agent.yaml
+        run: ./scripts/parse-config.sh >> "$GITHUB_OUTPUT"
+
+      - name: Select PR
+        id: select
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          ORG: nsalab-tmn
+          PROJECT_NUMBER: ${{ steps.config.outputs.project_number }}
+          ELIGIBLE_STATUSES: ${{ steps.config.outputs.eligible_statuses }}
+          REQUIRE_PR_LABELS: ${{ steps.config.outputs.require_pr_labels }}
+          EXCLUDED_PR_LABELS: ${{ steps.config.outputs.excluded_pr_labels }}
+          MAX_REVIEW_ATTEMPTS: ${{ steps.config.outputs.max_review_attempts }}
+          MANUAL_PR_URL: ${{ inputs.pr-url }}
+        run: |
+          ./scripts/select-pr.sh > selected-pr.json
+          if [[ ! -s selected-pr.json ]] || [[ "$(cat selected-pr.json)" == "" ]]; then
+            echo "selected=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "selected=true" >> "$GITHUB_OUTPUT"
+          echo "pr_number=$(jq -r '.pr_number' selected-pr.json)" >> "$GITHUB_OUTPUT"
+          echo "pr_repo=$(jq -r '.issue_repo' selected-pr.json)" >> "$GITHUB_OUTPUT"
+          echo "issue_number=$(jq -r '.issue_number' selected-pr.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Gather PR context
+        if: steps.select.outputs.selected == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_REPO: ${{ steps.select.outputs.pr_repo }}
+          PR_NUMBER: ${{ steps.select.outputs.pr_number }}
+          PROJECTS_JSON: ${{ steps.config.outputs.projects }}
+          TARGET_REPO: ${{ steps.select.outputs.pr_repo }}
+        run: |
+          KB_INFO=$(./scripts/resolve-kb.sh)
+          export KB_REPO=$(echo "$KB_INFO" | awk '{print $1}')
+          export KB_CONV_PATH=$(echo "$KB_INFO" | awk '{print $2}')
+          ./scripts/gather-pr-context.sh > pr-context.json
+
+      - name: Compile review
+        id: review
+        if: steps.select.outputs.selected == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          python3 ./scripts/review-pr.py pr-context.json prompts/review-brief.md schemas/review-pr.json > review.json
+          echo "decision=$(jq -r '.decision' review.json)" >> "$GITHUB_OUTPUT"
+          echo "confidence=$(jq -r '.confidence' review.json)" >> "$GITHUB_OUTPUT"
+          echo "::notice::Decision: $(jq -r '.decision' review.json), Confidence: $(jq -r '.confidence' review.json)"
+
+      - name: Post review
+        if: steps.select.outputs.selected == 'true' && inputs.dry-run != true
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_REPO: ${{ steps.select.outputs.pr_repo }}
+          PR_NUMBER: ${{ steps.select.outputs.pr_number }}
+          ISSUE_NUMBER: ${{ steps.select.outputs.issue_number }}
+          PROJECT_NUMBER: ${{ steps.config.outputs.project_number }}
+          STATUS_IN_PROGRESS: ${{ steps.config.outputs.status_in_progress }}
+          REVIEW_FILE: review.json
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: ./scripts/post-review.sh
+
+      - name: Session summary
+        if: always()
+        env:
+          AGENT_NAME: Review Agent
+          DRY_RUN: ${{ inputs.dry-run || 'false' }}
+          SELECTED: ${{ steps.select.outputs.selected }}
+          SUMMARY_ITEM: "${{ steps.select.outputs.pr_repo }}#${{ steps.select.outputs.pr_number }}"
+          SUMMARY_EXTRA: "**Issue:** #${{ steps.select.outputs.issue_number }}"
+          RESULT_FILE: review.json
+          RESULT_FIELDS: >-
+            "**Decision:** \(.decision)\n**Confidence:** \(.confidence)\n**Summary:** \(.summary)\n\n- Addresses issue: \(.addresses_issue)\n- Follows conventions: \(.follows_conventions)\n- Minimal change: \(.minimal_change)\n- Auto-merge eligible: \(.auto_merge_eligible)"
+        run: ./scripts/session-summary.sh

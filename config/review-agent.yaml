@@ -1,0 +1,34 @@
+agent:
+  project-number: 6
+  schedule: "0 9 * * 1-5"          # weekdays 9am UTC (1h after engineering-agent)
+  timeout-minutes: 15
+  max-review-attempts: 3
+  require-pr-labels:
+    - ai-generated
+  excluded-pr-labels:
+    - needs-triage
+    - stale
+  eligible-statuses:
+    - In review
+  # Board column names (case-sensitive)
+  status:
+    backlog: Backlog
+    blocked: Blocked
+    in-progress: In progress
+    in-review: In review
+    done: Done
+  # Crawl phase
+  auto-merge: false
+  confidence-threshold: high
+
+projects:
+  - name: cheburnet
+    knowledge-base: nsalab-tmn/cheburnet-knowledge-base
+    conventions-path: conventions
+    repos:
+      - nsalab-tmn/cheburnet-knowledge-base
+      - nsalab-tmn/cheburnet-vpn
+      - nsalab-tmn/cheburnet-infra
+      - nsalab-tmn/cheburnet-mtproxy
+      - nsalab-tmn/cheburnet-monitoring
+      - nsalab-tmn/cheburnet-router
