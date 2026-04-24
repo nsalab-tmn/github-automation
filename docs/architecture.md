@@ -158,6 +158,7 @@ Result: ~100% structural determinism (same JSON shape every run), ~95% content d
 |---|---|---|
 | `drift-detect` | Weekly + manual | Compares project repos against conventions, creates compliance issues |
 | `engineering-agent` | Manual (crawl phase) | Picks compliance issues from board, implements fixes, creates PRs |
+| `review-agent` | Weekdays + manual | Reviews AI-generated PRs, posts structured reviews |
 
 ### Convention drift detection
 
@@ -229,25 +230,60 @@ Picks issues from the project board backlog and implements them autonomously. Th
 
 **Safety invariants**: agent never merges PRs (human review required), never pushes to main (feature branches only), concurrency group prevents parallel runs.
 
+### Review agent
+
+Reviews AI-generated PRs against their linked issues. Posts structured GitHub PR reviews.
+
+```
+ GATHER (free)              DECIDE (cheap)              EXECUTE (deterministic)
+ PR diff + linked issue     Claude API, Sonnet          Post PR review via API
+ CI status + conventions    temperature=0, schema       Update board if needed
+                            constrained
+ ┌──────────────────┐      ┌──────────────────┐       ┌──────────────────┐
+ │ PR metadata+diff  │      │ Does diff solve   │       │ APPROVE          │
+ │ Linked issue body │─────>│ the stated issue? │──────>│ REQUEST_CHANGES  │
+ │ CI check results  │      │ Convention check  │       │ COMMENT          │
+ │ KB conventions    │      │ Side effect check │       │ (escalate)       │
+ └──────────────────┘      └──────────────────┘       └──────────────────┘
+```
+
+**PR selection**: board-driven, finds issues in "In review" status with open `ai-generated` PRs. Skips PRs with failing CI or max review attempts reached. Sorts by linked issue Priority > Age.
+
+**Review decisions**:
+- `approve` — changes address the issue, conventions followed, minimal and focused
+- `request_changes` — blocking issues found (wrong fix, errors, convention violations)
+- `comment` — low confidence, escalate to human judgment
+
+**On REQUEST_CHANGES**: posts review feedback on the linked issue (for engineering agent context), directly updates board status to "In progress" (bot events don't trigger project-sync). Engineering agent picks it up on next run.
+
+**Self-approval guard**: since engineering agent and review agent share the same App token (`nsalab-automation[bot]`), APPROVE is downgraded to COMMENT for bot-authored PRs. The structured review still gives humans enough context to approve quickly. Separate bot identities planned (#138).
+
+**Max 3 review attempts** before escalating to human with `needs-triage` label.
+
 ### Feedback loop
 
-Drift-detect and the engineering agent form a closed loop:
+All three Layer 3 workflows form a closed loop:
 
 ```
-drift-detect                    engineering-agent
-  finds drift  ──── creates ────>  compliance issue (Backlog)
-                                        │
-                                   picks issue, implements fix
-                                        │
-  recognizes fix <── suppresses ──  PR created (In review)
-  (PR-open filter)                      │
-                                   human merges PR
-                                        │
-  recognizes fix <── suppresses ──  issue closed (Done)
-  (recently-fixed filter)
+drift-detect              engineering-agent           review-agent
+  finds drift ── creates ──> issue (Backlog)
+                                  │
+                             picks issue
+                             implements fix
+                                  │
+                             PR created ──────────> reviews PR
+                             (In review)                │
+                                  │               ┌─ approve ──> human merges ──> Done
+  recognizes fix                  │               │
+  (suppresses)  <─────────────────┤               └─ request_changes
+                                  │                       │
+                                  └── picks up again <────┘
+                                      (In progress)
 ```
 
-Over time, the engineering agent resolves drift findings, and drift-detect learns to suppress them. Issues that can't be fixed via PR (API operations, manual settings) are triaged to Blocked with `needs-triage` for human attention.
+**The full cycle**: drift-detect finds problems → engineering agent fixes them → review agent validates the fix → human merges. Drift-detect suppresses findings that already have open PRs or were recently fixed.
+
+Issues that can't be fixed via PR (API operations, manual settings) are triaged to Blocked with `needs-triage` for human attention.
 
 ### Maturation principle
 
@@ -260,6 +296,7 @@ github-automation (org-wide)
   ├── Reusable workflows (Layer 2)
   ├── Drift detection (Layer 3)    ← finds problems
   ├── Engineering agent (Layer 3)  ← fixes problems
+  ├── Review agent (Layer 3)       ← validates fixes
   ├── Scaffold templates
   └── This architecture doc
         ↓ consumed by
@@ -283,8 +320,11 @@ Vertical distribution: project repos follow project knowledge base, which follow
 | Project board Layer 2 (auto-project, project-sync) | GitHub App token | `nsalab-automation[bot]` |
 | Cross-repo Layer 3 (drift detection, issue creation) | GitHub App token | `nsalab-automation[bot]` |
 | Layer 3 engineering agent (checkout, push, PR creation) | GitHub App token | `nsalab-automation[bot]` |
-| Claude API calls (drift-detect Decide, engineering-agent Decide) | `ANTHROPIC_API_KEY` | N/A |
+| Layer 3 review agent (post reviews, board updates) | GitHub App token | `nsalab-automation[bot]` |
+| Claude API calls (all Layer 3 Decide phases) | `ANTHROPIC_API_KEY` | N/A |
 | Claude Code CLI (engineering-agent Execute) | `ANTHROPIC_API_KEY` | N/A |
+
+**Note**: all Layer 3 workflows currently share a single App identity (`nsalab-automation[bot]`). This prevents the review agent from approving PRs created by the engineering agent (self-approval). Separate identities planned (#138).
 
 Secrets are org-level (shared across all repos): `APP_ID`, `APP_PRIVATE_KEY`, `ANTHROPIC_API_KEY`. Repo-specific secrets remain per-repo (e.g., `SCAFFOLD_TOKEN` in github-automation).
 
@@ -300,3 +340,5 @@ GitHub Actions workflows are NOT triggered by events created via App tokens (saf
 - [Issue #51](https://github.com/nsalab-tmn/github-automation/issues/51) — drift detection implementation and testing
 - [Issue #112](https://github.com/nsalab-tmn/github-automation/issues/112) — engineering agent implementation and testing
 - [Issue #130](https://github.com/nsalab-tmn/github-automation/issues/130) — drift-detect awareness improvements
+- [Issue #135](https://github.com/nsalab-tmn/github-automation/issues/135) — review agent implementation
+- [Issue #138](https://github.com/nsalab-tmn/github-automation/issues/138) — separate bot identities (planned)
