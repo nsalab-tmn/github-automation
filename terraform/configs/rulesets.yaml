@@ -7,6 +7,14 @@ rulesets:
         include: ["~DEFAULT_BRANCH"]
       repository_name:
         include: ["~ALL"]
+    bypass_actors:
+      - actor_id: 1
+        actor_type: OrganizationAdmin
+        bypass_mode: always
+      # doorman can push initial commits to bootstrap new repos
+      - actor_id: 3493789
+        actor_type: Integration
+        bypass_mode: always
     rules:
       non_fast_forward: true
       deletion: true
@@ -23,6 +31,14 @@ rulesets:
         include: ["~DEFAULT_BRANCH"]
       repository_name:
         include: ["~ALL"]
+    bypass_actors:
+      - actor_id: 1
+        actor_type: OrganizationAdmin
+        bypass_mode: always
+      # doorman can push initial commits to bootstrap new repos
+      - actor_id: 3493789
+        actor_type: Integration
+        bypass_mode: always
     rules:
       non_fast_forward: true
       required_status_checks:
