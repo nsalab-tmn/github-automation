@@ -35,6 +35,16 @@ ISSUES=$(jq -r '.issues_found | if length > 0 then map("- **\(.severity)** `\(.f
 
 REVIEW_EVENT=$(echo "$DECISION" | sed 's/approve/APPROVE/;s/request_changes/REQUEST_CHANGES/;s/comment/COMMENT/')
 
+# GitHub doesn't allow approving your own PR. If the PR was created by the same
+# bot identity (nsalab-automation), downgrade APPROVE to COMMENT.
+if [[ "$REVIEW_EVENT" == "APPROVE" ]]; then
+  PR_AUTHOR=$(gh api "repos/${PR_REPO}/pulls/${PR_NUMBER}" --jq '.user.login' 2>/dev/null || echo "")
+  if [[ "$PR_AUTHOR" == *"[bot]"* ]]; then
+    echo "::notice::PR authored by bot (${PR_AUTHOR}) — posting COMMENT instead of APPROVE (self-approval not allowed)" >&2
+    REVIEW_EVENT="COMMENT"
+  fi
+fi
+
 # --- Post PR review ---
 
 ISSUES_SECTION=""
