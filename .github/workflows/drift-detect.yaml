@@ -27,8 +27,8 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@v3
         with:
-          client-id: ${{ secrets.APP_CLIENT_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          client-id: ${{ secrets.LIBRARIAN_CLIENT_ID }}
+          private-key: ${{ secrets.LIBRARIAN_PRIVATE_KEY }}
           owner: nsalab-tmn
 
       - name: Install Python dependencies
@@ -60,7 +60,7 @@ jobs:
           ADOPTION_GUIDE: docs/adoption.md
         run: |
           PROJECT_COUNT=$(jq length projects.json)
-          ALL_FINDINGS="[]"
+          echo "[]" > all-findings.json
 
           for i in $(seq 0 $((PROJECT_COUNT - 1))); do
             PROJECT=$(jq ".[$i]" projects.json)
@@ -80,12 +80,10 @@ jobs:
               > "findings-${PROJECT_NAME}.json"
 
             cat "findings-${PROJECT_NAME}.json"
-            ALL_FINDINGS=$(jq --slurpfile f "findings-${PROJECT_NAME}.json" '. + $f' <<< "$ALL_FINDINGS")
+            jq --slurpfile f "findings-${PROJECT_NAME}.json" '. + $f' all-findings.json > all-findings.tmp && mv all-findings.tmp all-findings.json
 
             echo "::endgroup::"
           done
-
-          echo "$ALL_FINDINGS" > all-findings.json
 
           # Step summary
           echo "## Drift Detection Results" >> "$GITHUB_STEP_SUMMARY"
@@ -108,19 +106,16 @@ jobs:
         run: |
 
           echo "::group::Gathering compliance state (project #${PROJECT_NUMBER})"
-          COMPLIANCE_STATE="{}"
+          echo "{}" > compliance-state.json
           PROJECT_COUNT=$(jq length projects.json)
           for i in $(seq 0 $((PROJECT_COUNT - 1))); do
             REPOS=$(jq -r ".[$i].repos[]" projects.json)
             for repo in $REPOS; do
               export REPO="$repo"
-              state=$(./scripts/gather-compliance-state.sh)
-              # Write per-repo state to file to avoid arg-list-too-long
-              echo "$state" > "compliance-${repo//\//-}.json"
-              COMPLIANCE_STATE=$(jq --arg r "$repo" --slurpfile s "compliance-${repo//\//-}.json" '. + {($r): $s[0]}' <<< "$COMPLIANCE_STATE")
+              ./scripts/gather-compliance-state.sh > "compliance-${repo//\//-}.json"
+              jq --arg r "$repo" --slurpfile s "compliance-${repo//\//-}.json" '. + {($r): $s[0]}' compliance-state.json > compliance-state.tmp && mv compliance-state.tmp compliance-state.json
             done
           done
-          echo "$COMPLIANCE_STATE" > compliance-state.json
           echo "::endgroup::"
 
       - name: Execute actions
