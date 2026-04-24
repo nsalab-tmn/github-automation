@@ -24,4 +24,6 @@ rulesets:
     rules:
       non_fast_forward: true
       required_status_checks:
-        - context: "PR Validation"
+        strict: false
+        checks:
+          - context: "PR Validation"

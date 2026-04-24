@@ -15,6 +15,9 @@ concurrency:
   group: terraform
   cancel-in-progress: false
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   plan:
     runs-on: ubuntu-latest
@@ -35,6 +38,9 @@ jobs:
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform fmt
+        run: terraform fmt -check -recursive
 
       - name: Terraform init
         run: terraform init
