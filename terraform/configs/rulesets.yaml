@@ -1,5 +1,20 @@
 rulesets:
-  - name: require-pr
+  - name: require-pull-request
+    target: branch
+    enforcement: active
+    conditions:
+      ref_name:
+        include: ["~DEFAULT_BRANCH"]
+      repository_name:
+        include: ["~ALL"]
+    # No bypass_actors — nobody bypasses, including admins
+    rules:
+      non_fast_forward: true
+      pull_request:
+        required_approving_review_count: 0
+        dismiss_stale_reviews_on_push: false
+
+  - name: require-pr-validation
     target: branch
     enforcement: active
     conditions:
@@ -9,6 +24,7 @@ rulesets:
         include: ["~ALL"]
     rules:
       non_fast_forward: true
-      pull_request:
-        required_approving_review_count: 0
-        dismiss_stale_reviews_on_push: false
+      required_status_checks:
+        strict: false
+        checks:
+          - context: "PR Validation"
