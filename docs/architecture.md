@@ -123,15 +123,19 @@ Tasks that require reading context, understanding intent, and exercising judgmen
 
 ### Architecture: Gather → Decide → Execute
 
+All Layer 3 workflows follow the same three-phase pipeline:
+
 ```
 Gather (deterministic)          Decide (Claude API)              Execute (deterministic)
-  Shell scripts collect    →    Schema-constrained tool use  →   Create issues, post
-  repo state via gh CLI         temperature=0, forced output     summaries via gh API
+  Shell scripts collect    →    Schema-constrained tool use  →   Deterministic actions
+  state via gh CLI/GraphQL      temperature=0, forced output     via gh CLI / GraphQL
 ```
 
-- **Gather**: deterministic shell scripts that collect JSON state from GitHub API
-- **Decide**: Claude API call with gathered state + conventions. Output constrained to a strict JSON schema via tool use. `temperature=0` for near-deterministic results
-- **Execute**: parse Claude's structured output into `gh` CLI / API commands. No free-form text drives actions
+- **Gather**: deterministic shell scripts that collect JSON state from GitHub API. No AI cost.
+- **Decide**: Claude API call with gathered state. Output constrained to a strict JSON schema via tool use. `temperature=0` for near-deterministic results.
+- **Execute**: parse Claude's structured output into deterministic actions. No free-form text drives actions.
+
+Each workflow extends this pattern differently — drift-detect uses Claude API for both Decide and Execute, while the engineering agent uses Claude API for Decide and Claude Code CLI for Execute.
 
 ### Determinism approach
 
@@ -152,7 +156,8 @@ Result: ~100% structural determinism (same JSON shape every run), ~95% content d
 
 | Workflow | Schedule | What it does |
 |---|---|---|
-| `drift-detect` | Weekly + manual | Compares project repos against knowledge base conventions, creates issues for drift |
+| `drift-detect` | Weekly + manual | Compares project repos against conventions, creates compliance issues |
+| `engineering-agent` | Manual (crawl phase) | Picks compliance issues from board, implements fixes, creates PRs |
 
 ### Convention drift detection
 
@@ -178,6 +183,72 @@ Finding types:
 
 Issues are created as `nsalab-automation[bot]` (GitHub App) with `compliance` label. Dedup via HTML markers prevents duplicates across runs.
 
+**Awareness filtering** — before creating an issue, drift-detect checks the compliance state of each repo:
+
+| Check | Action |
+|---|---|
+| Open issue with same marker exists | Skip (duplicate) |
+| Existing issue has `needs-triage` label | Suppress (agent triaged as not-workable) |
+| Existing issue has an open PR | Suppress (fix in progress) |
+| Closed issue with same marker, completed within 30 days | Suppress (recently fixed) |
+| None of the above | Create issue + add to project board |
+
+New issues are automatically added to the project board with Backlog status (compensates for GitHub's suppression of `issues.opened` events from App tokens).
+
+### Engineering agent
+
+Picks issues from the project board backlog and implements them autonomously. Three-stage pipeline:
+
+```
+ GATHER (free)              DECIDE (cheap)              EXECUTE (capable)
+ Deterministic scripts      Claude API, Sonnet          Claude Code CLI
+ harvest Layer 2 signals    temperature=0, schema       full tool access
+                            constrained
+ ┌──────────────────┐      ┌──────────────────┐       ┌──────────────────┐
+ │ Project board     │      │ Verify problem    │       │ Starts with a    │
+ │ Issue + comments  │─────>│ still exists      │──────>│ focused brief    │
+ │ Pinned issue      │      │ Assess workability│       │ instead of raw   │
+ │ Repo docs + tree  │      │ Compile ~3K brief │       │ docs — goes      │
+ │ KB conventions    │      │ from ~20K raw     │       │ straight to      │
+ │ Recent PRs        │      │ context           │       │ coding           │
+ └──────────────────┘      └──────────────────┘       └──────────────────┘
+```
+
+**Issue selection**: Priority > Size > Type > Age (deterministic, no AI). Only issues on the project board with `compliance` label (crawl phase). Paginates through all board items.
+
+**State machine** — board columns: Backlog → Blocked → In progress → In review → Done
+
+| Event | Transition | Signal |
+|---|---|---|
+| Agent picks issue | Backlog → In progress | Assigns `nsalab-automation[bot]` |
+| Agent creates PR | In progress → In review | Layer 1 (PR linked to issue) |
+| Agent finds non-PR issue | In progress → Blocked | `needs-triage` label |
+| Agent verifies already fixed | — | Closes issue with evidence |
+| Agent fails 3 times | In progress → Backlog | `needs-triage` label |
+| Reviewer merges PR | In review → Done | Layer 1 (item closed) |
+
+**Safety invariants**: agent never merges PRs (human review required), never pushes to main (feature branches only), concurrency group prevents parallel runs.
+
+### Feedback loop
+
+Drift-detect and the engineering agent form a closed loop:
+
+```
+drift-detect                    engineering-agent
+  finds drift  ──── creates ────>  compliance issue (Backlog)
+                                        │
+                                   picks issue, implements fix
+                                        │
+  recognizes fix <── suppresses ──  PR created (In review)
+  (PR-open filter)                      │
+                                   human merges PR
+                                        │
+  recognizes fix <── suppresses ──  issue closed (Done)
+  (recently-fixed filter)
+```
+
+Over time, the engineering agent resolves drift findings, and drift-detect learns to suppress them. Issues that can't be fixed via PR (API operations, manual settings) are triaged to Blocked with `needs-triage` for human attention.
+
 ### Maturation principle
 
 Layer 3 is an R&D lab for Layer 2. When Claude makes the same recommendation repeatedly, formalize it as a deterministic workflow and push it down to Layer 2. Over time, Layer 2 grows and Layer 3 shrinks — that's the system maturing.
@@ -187,7 +258,8 @@ Layer 3 is an R&D lab for Layer 2. When Claude makes the same recommendation rep
 ```
 github-automation (org-wide)
   ├── Reusable workflows (Layer 2)
-  ├── Drift detection (Layer 3)
+  ├── Drift detection (Layer 3)    ← finds problems
+  ├── Engineering agent (Layer 3)  ← fixes problems
   ├── Scaffold templates
   └── This architecture doc
         ↓ consumed by
@@ -210,7 +282,9 @@ Vertical distribution: project repos follow project knowledge base, which follow
 | Project board Layer 0 (built-in automations) | Internal | `github-project-automation[bot]` |
 | Project board Layer 2 (auto-project, project-sync) | GitHub App token | `nsalab-automation[bot]` |
 | Cross-repo Layer 3 (drift detection, issue creation) | GitHub App token | `nsalab-automation[bot]` |
-| Claude API calls | `ANTHROPIC_API_KEY` | N/A |
+| Layer 3 engineering agent (checkout, push, PR creation) | GitHub App token | `nsalab-automation[bot]` |
+| Claude API calls (drift-detect Decide, engineering-agent Decide) | `ANTHROPIC_API_KEY` | N/A |
+| Claude Code CLI (engineering-agent Execute) | `ANTHROPIC_API_KEY` | N/A |
 
 Secrets are org-level (shared across all repos): `APP_ID`, `APP_PRIVATE_KEY`, `ANTHROPIC_API_KEY`. Repo-specific secrets remain per-repo (e.g., `SCAFFOLD_TOKEN` in github-automation).
 
@@ -224,3 +298,5 @@ GitHub Actions workflows are NOT triggered by events created via App tokens (saf
 - [docs/conventions.md](conventions.md) — workflow catalog and technical reference
 - [Issue #7](https://github.com/nsalab-tmn/github-automation/issues/7) — Layer 3 architecture discussion
 - [Issue #51](https://github.com/nsalab-tmn/github-automation/issues/51) — drift detection implementation and testing
+- [Issue #112](https://github.com/nsalab-tmn/github-automation/issues/112) — engineering agent implementation and testing
+- [Issue #130](https://github.com/nsalab-tmn/github-automation/issues/130) — drift-detect awareness improvements
