@@ -160,9 +160,10 @@ jobs:
         run: |
           echo "::group::Claiming issue"
 
-          # Assign the bot to itself using GraphQL (REST is unreliable for bot users)
+          # Assign the bot using its user node ID (REST is unreliable for bot users)
           ISSUE_ID=$(jq -r '.issue_id' selected-issue.json)
-          BOT_ID=$(gh api graphql -f query='query { viewer { id } }' --jq '.data.viewer.id' 2>/dev/null || echo "")
+          BOT_LOGIN="${GH_TOKEN_APP_SLUG:-nsalab-mechanic}[bot]"
+          BOT_ID=$(gh api "users/${BOT_LOGIN}" --jq '.node_id' 2>/dev/null || echo "")
           if [[ -n "$BOT_ID" && "$BOT_ID" != "null" && -n "$ISSUE_ID" ]]; then
             gh api graphql -f query='
               mutation($assignable: ID!, $assignee: ID!) {
@@ -170,8 +171,9 @@ jobs:
                   assignable { ... on Issue { number } }
                 }
               }
-            ' -f assignable="$ISSUE_ID" -f assignee="$BOT_ID" >/dev/null 2>&1 || true
-            echo "::notice::Assigned bot to issue"
+            ' -f assignable="$ISSUE_ID" -f assignee="$BOT_ID" >/dev/null 2>&1 && \
+              echo "::notice::Assigned ${BOT_LOGIN} to issue" || \
+              echo "::warning::Failed to assign ${BOT_LOGIN}" >&2
           fi
 
           # Move to In Progress on project board
