@@ -1,0 +1,67 @@
+{
+  "name": "review_pr",
+  "description": "Review an AI-generated pull request against its linked issue",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "decision": {
+        "type": "string",
+        "enum": ["approve", "request_changes", "comment"],
+        "description": "approve=ready to merge, request_changes=has blocking issues, comment=needs human judgment"
+      },
+      "confidence": {
+        "type": "string",
+        "enum": ["high", "medium", "low"],
+        "description": "Confidence in the review decision"
+      },
+      "summary": {
+        "type": "string",
+        "description": "1-2 sentence review summary explaining the decision"
+      },
+      "addresses_issue": {
+        "type": "boolean",
+        "description": "Whether the PR changes directly address the problem stated in the linked issue"
+      },
+      "follows_conventions": {
+        "type": "boolean",
+        "description": "Whether the changes follow repo and project conventions"
+      },
+      "minimal_change": {
+        "type": "boolean",
+        "description": "Whether the change is focused and minimal, without unrelated modifications"
+      },
+      "issues_found": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "severity": {
+              "type": "string",
+              "enum": ["blocking", "suggestion", "nitpick"],
+              "description": "blocking=must fix before merge, suggestion=should fix, nitpick=optional"
+            },
+            "file": {
+              "type": "string",
+              "description": "File path relative to repo root"
+            },
+            "line": {
+              "type": "integer",
+              "description": "Line number in the diff (0 if file-level issue)"
+            },
+            "description": {
+              "type": "string",
+              "description": "What is wrong and how to fix it"
+            }
+          },
+          "required": ["severity", "file", "line", "description"]
+        },
+        "description": "Specific issues found in the PR"
+      },
+      "auto_merge_eligible": {
+        "type": "boolean",
+        "description": "Whether the PR is eligible for auto-merge (approve + high confidence + no blocking issues + doc-only or convention fix)"
+      }
+    },
+    "required": ["decision", "confidence", "summary", "addresses_issue", "follows_conventions", "minimal_change", "issues_found", "auto_merge_eligible"]
+  }
+}
