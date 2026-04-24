@@ -62,18 +62,7 @@ jobs:
           MAX_REVIEW_ATTEMPTS: ${{ steps.config.outputs.max_review_attempts }}
           MANUAL_PR_URL: ${{ inputs.pr-url }}
         run: |
-          if [[ -n "$MANUAL_PR_URL" ]]; then
-            REPO=$(echo "$MANUAL_PR_URL" | grep -oP 'github\.com/\K[^/]+/[^/]+')
-            NUM=$(echo "$MANUAL_PR_URL" | grep -oP '/pull/\K\d+')
-            gh api "repos/${REPO}/pulls/${NUM}" --jq '{
-              pr_number: .number, pr_title: .title, pr_branch: .head.ref,
-              pr_sha: .head.sha, issue_repo: .base.repo.full_name,
-              issue_number: (.body | capture("(?i)closes\\s+#(?<n>\\d+)") | .n | tonumber)
-            }' > selected-pr.json
-          else
-            ./scripts/select-pr.sh > selected-pr.json
-          fi
-
+          ./scripts/select-pr.sh > selected-pr.json
           if [[ ! -s selected-pr.json ]] || [[ "$(cat selected-pr.json)" == "" ]]; then
             echo "selected=false" >> "$GITHUB_OUTPUT"
             exit 0

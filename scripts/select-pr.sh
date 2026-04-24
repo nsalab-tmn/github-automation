@@ -3,8 +3,8 @@ set -euo pipefail
 
 # select-pr.sh — Select an AI-generated PR to review from the project board
 #
-# Finds issues in "In review" status that have open PRs with ai-generated label.
-# Validates each candidate and returns the first one that passes all checks.
+# If MANUAL_PR_URL is set, fetches that PR directly (skips board selection).
+# Otherwise finds issues in "In review" status with qualifying open PRs.
 #
 # Required environment variables:
 #   GH_TOKEN             — token with project and issue access
@@ -15,10 +15,27 @@ set -euo pipefail
 #   EXCLUDED_PR_LABELS   — JSON array of labels that disqualify the PR
 #   MAX_REVIEW_ATTEMPTS  — max review-agent attempts before skipping
 #
+# Optional:
+#   MANUAL_PR_URL        — specific PR URL to review (bypasses selection)
+#
 # Output: JSON with selected PR details to stdout, empty if none eligible
 
 ORG="${ORG:?ORG env var required}"
 PROJECT_NUMBER="${PROJECT_NUMBER:?PROJECT_NUMBER env var required}"
+
+# --- Manual PR URL override ---
+if [[ -n "${MANUAL_PR_URL:-}" ]]; then
+  REPO=$(echo "$MANUAL_PR_URL" | grep -oP 'github\.com/\K[^/]+/[^/]+')
+  NUM=$(echo "$MANUAL_PR_URL" | grep -oP '/pull/\K\d+')
+  echo "::notice::Manual PR: ${REPO}#${NUM}" >&2
+
+  gh api "repos/${REPO}/pulls/${NUM}" --jq '{
+    pr_number: .number, pr_title: .title, pr_branch: .head.ref,
+    pr_sha: .head.sha, issue_repo: .base.repo.full_name,
+    issue_number: (.body | capture("(?i)closes\\s+#(?<n>\\d+)") | .n | tonumber)
+  }' 2>/dev/null || { echo "::error::Could not fetch PR from URL: ${MANUAL_PR_URL}" >&2; exit 1; }
+  exit 0
+fi
 ELIGIBLE_STATUSES="${ELIGIBLE_STATUSES:-'["In review"]'}"
 REQUIRE_PR_LABELS="${REQUIRE_PR_LABELS:-'["ai-generated"]'}"
 EXCLUDED_PR_LABELS="${EXCLUDED_PR_LABELS:-'["needs-triage","stale"]'}"
