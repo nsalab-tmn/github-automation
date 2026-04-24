@@ -13,17 +13,8 @@ rulesets:
         required_approving_review_count: 0
         dismiss_stale_reviews_on_push: false
 
-  - name: require-pr-validation
-    target: branch
-    enforcement: active
-    conditions:
-      ref_name:
-        include: ["~DEFAULT_BRANCH"]
-      repository_name:
-        include: ["~ALL"]
-    rules:
-      non_fast_forward: true
-      required_status_checks:
-        strict: false
-        checks:
-          - context: "PR Validation"
+  # Note: require-pr-validation ruleset with required_status_checks is
+  # managed manually in org settings until the GitHub Terraform provider
+  # fixes the crash in github_organization_ruleset with status checks.
+  # See: https://github.com/integrations/terraform-provider-github/issues
+
