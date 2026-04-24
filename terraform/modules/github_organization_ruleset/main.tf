@@ -30,7 +30,7 @@ resource "github_organization_ruleset" "this" {
     non_fast_forward = lookup(var.rules, "non_fast_forward", true)
 
     dynamic "pull_request" {
-      for_each = lookup(var.rules, "pull_request", null) != null ? [var.rules.pull_request] : []
+      for_each = var.rules.pull_request != null ? [var.rules.pull_request] : []
 
       content {
         required_approving_review_count   = lookup(pull_request.value, "required_approving_review_count", 0)
@@ -42,7 +42,7 @@ resource "github_organization_ruleset" "this" {
     }
 
     dynamic "required_status_checks" {
-      for_each = lookup(var.rules, "required_status_checks", null) != null ? [var.rules.required_status_checks] : []
+      for_each = var.rules.required_status_checks != null ? [var.rules.required_status_checks] : []
 
       content {
         strict_required_status_checks_policy = lookup(required_status_checks.value, "strict", false)
