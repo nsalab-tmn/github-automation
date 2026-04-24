@@ -40,18 +40,9 @@ jobs:
           python3 -c "
           import yaml, json
           with open('config/drift-projects.yaml') as f:
-              config = yaml.safe_load(f)
-          print(json.dumps(config['projects']))
+              print(json.dumps(yaml.safe_load(f)['projects']))
           " > projects.json
-          # Read project number from engineering-agent config
-          python3 -c "
-          import yaml
-          with open('config/engineering-agent.yaml') as f:
-              config = yaml.safe_load(f)
-          print(config['agent']['project-number'])
-          " > project-number.txt
-          echo "count=$(jq length projects.json)" >> "$GITHUB_OUTPUT"
-          echo "project_number=$(cat project-number.txt)" >> "$GITHUB_OUTPUT"
+          CONFIG_FILE=config/engineering-agent.yaml ./scripts/parse-config.sh >> "$GITHUB_OUTPUT"
 
       - name: Gather and analyze each project
         env:
