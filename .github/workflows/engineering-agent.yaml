@@ -160,14 +160,21 @@ jobs:
         run: |
           echo "::group::Claiming issue"
 
-          # Assign to nsalab-mechanic[bot]
-          # Note: GitHub App tokens create assignments as the app's bot user
-          gh api "repos/${ISSUE_REPO}/issues/${ISSUE_NUMBER}/assignees" \
-            -f "assignees[]=nsalab-mechanic[bot]" >/dev/null 2>&1 || true
+          # Assign the bot to itself using GraphQL (REST is unreliable for bot users)
+          ISSUE_ID=$(jq -r '.issue_id' selected-issue.json)
+          BOT_ID=$(gh api graphql -f query='query { viewer { id } }' --jq '.data.viewer.id' 2>/dev/null || echo "")
+          if [[ -n "$BOT_ID" && "$BOT_ID" != "null" && -n "$ISSUE_ID" ]]; then
+            gh api graphql -f query='
+              mutation($assignable: ID!, $assignee: ID!) {
+                addAssigneesToAssignable(input: {assignableId: $assignable, assigneeIds: [$assignee]}) {
+                  assignable { ... on Issue { number } }
+                }
+              }
+            ' -f assignable="$ISSUE_ID" -f assignee="$BOT_ID" >/dev/null 2>&1 || true
+            echo "::notice::Assigned bot to issue"
+          fi
 
           # Move to In Progress on project board
-          # Get project item ID for this issue
-          ISSUE_ID=$(jq -r '.issue_id' selected-issue.json)
 
           PROJECT_DATA=$(gh api graphql -f query='
             query($org: String!, $number: Int!) {
