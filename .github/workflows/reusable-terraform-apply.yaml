@@ -1,0 +1,70 @@
+name: reusable - terraform-apply
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        type: string
+        default: terraform
+        description: Directory containing Terraform config
+      terraform-version:
+        type: string
+        default: latest
+        description: Terraform version to install
+    secrets:
+      doorman-client-id:
+        required: true
+      doorman-private-key:
+        required: true
+      arm-client-id:
+        required: true
+      arm-client-secret:
+        required: true
+      arm-tenant-id:
+        required: true
+      arm-subscription-id:
+        required: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Generate app token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ secrets.doorman-client-id }}
+          private-key: ${{ secrets.doorman-private-key }}
+          owner: nsalab-tmn
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ inputs.terraform-version }}
+
+      - name: Terraform init
+        env:
+          ARM_CLIENT_ID: ${{ secrets.arm-client-id }}
+          ARM_CLIENT_SECRET: ${{ secrets.arm-client-secret }}
+          ARM_TENANT_ID: ${{ secrets.arm-tenant-id }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.arm-subscription-id }}
+        run: terraform init
+
+      - name: Terraform apply
+        env:
+          TF_VAR_github_token: ${{ steps.app-token.outputs.token }}
+          TF_VAR_github_owner: nsalab-tmn
+          ARM_CLIENT_ID: ${{ secrets.arm-client-id }}
+          ARM_CLIENT_SECRET: ${{ secrets.arm-client-secret }}
+          ARM_TENANT_ID: ${{ secrets.arm-tenant-id }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.arm-subscription-id }}
+        run: terraform apply -auto-approve
