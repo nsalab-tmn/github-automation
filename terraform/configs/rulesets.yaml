@@ -1,13 +1,14 @@
-# Organization rulesets are managed manually in org settings until the
-# GitHub Terraform provider fixes the crash in github_organization_ruleset.
-# The provider v6.12.0 crashes when creating rulesets with App tokens.
-#
-# Current rulesets (managed manually):
-#   - require-pr: require PR for all repos on default branch
-#   - require-pr-validation: require PR Validation check to pass
-#   - block-force-push: non_fast_forward on default branch
-#
-# Rulesets will be imported to Terraform when the provider is stable.
-
-rulesets: []
-
+rulesets:
+  - name: require-pr
+    target: branch
+    enforcement: active
+    conditions:
+      ref_name:
+        include: ["~DEFAULT_BRANCH"]
+      repository_name:
+        include: ["~ALL"]
+    rules:
+      non_fast_forward: true
+      pull_request:
+        required_approving_review_count: 0
+        dismiss_stale_reviews_on_push: false
