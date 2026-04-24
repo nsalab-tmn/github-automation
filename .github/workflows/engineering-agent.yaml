@@ -35,8 +35,8 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@v3
         with:
-          client-id: ${{ secrets.APP_CLIENT_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          client-id: ${{ secrets.MECHANIC_CLIENT_ID }}
+          private-key: ${{ secrets.MECHANIC_PRIVATE_KEY }}
           owner: nsalab-tmn
 
       - name: Install dependencies

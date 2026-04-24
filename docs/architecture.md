@@ -256,7 +256,7 @@ Reviews AI-generated PRs against their linked issues. Posts structured GitHub PR
 
 **On REQUEST_CHANGES**: posts review feedback on the linked issue (for engineering agent context), directly updates board status to "In progress" (bot events don't trigger project-sync). Engineering agent picks it up on next run.
 
-**Self-approval guard**: since engineering agent and review agent share the same App token (`nsalab-automation[bot]`), APPROVE is downgraded to COMMENT for bot-authored PRs. The structured review still gives humans enough context to approve quickly. Separate bot identities planned (#138).
+**Separate identities**: the review agent (`nsalab-beekeeper[bot]`) can properly APPROVE PRs created by the engineering agent (`nsalab-mechanic[bot]`) since they are different GitHub App identities.
 
 **Max 3 review attempts** before escalating to human with `needs-triage` label.
 
@@ -318,15 +318,22 @@ Vertical distribution: project repos follow project knowledge base, which follow
 | Single-repo Layer 2 (assign, label, validate) | `GITHUB_TOKEN` | `github-actions[bot]` |
 | Project board Layer 0 (built-in automations) | Internal | `github-project-automation[bot]` |
 | Project board Layer 2 (auto-project, project-sync) | GitHub App token | `nsalab-automation[bot]` |
-| Cross-repo Layer 3 (drift detection, issue creation) | GitHub App token | `nsalab-automation[bot]` |
-| Layer 3 engineering agent (checkout, push, PR creation) | GitHub App token | `nsalab-automation[bot]` |
-| Layer 3 review agent (post reviews, board updates) | GitHub App token | `nsalab-automation[bot]` |
+| Layer 3 drift detection (issue creation, board-add) | GitHub App token | `nsalab-librarian[bot]` |
+| Layer 3 engineering agent (checkout, push, PR creation) | GitHub App token | `nsalab-mechanic[bot]` |
+| Layer 3 review agent (post reviews, board updates) | GitHub App token | `nsalab-beekeeper[bot]` |
 | Claude API calls (all Layer 3 Decide phases) | `ANTHROPIC_API_KEY` | N/A |
 | Claude Code CLI (engineering-agent Execute) | `ANTHROPIC_API_KEY` | N/A |
 
-**Note**: all Layer 3 workflows currently share a single App identity (`nsalab-automation[bot]`). This prevents the review agent from approving PRs created by the engineering agent (self-approval). Separate identities planned (#138).
+Each Layer 3 workflow has its own GitHub App identity for clean audit trails and proper permission separation. The review agent (`nsalab-beekeeper`) can approve PRs created by the engineering agent (`nsalab-mechanic`) since they are different identities.
 
-Secrets are org-level (shared across all repos): `APP_ID`, `APP_PRIVATE_KEY`, `ANTHROPIC_API_KEY`. Repo-specific secrets remain per-repo (e.g., `SCAFFOLD_TOKEN` in github-automation).
+Secrets are org-level (shared across all repos):
+- `LIBRARIAN_CLIENT_ID`, `LIBRARIAN_PRIVATE_KEY` — drift-detect (`nsalab-librarian`)
+- `MECHANIC_CLIENT_ID`, `MECHANIC_PRIVATE_KEY` — engineering-agent (`nsalab-mechanic`)
+- `BEEKEEPER_CLIENT_ID`, `BEEKEEPER_PRIVATE_KEY` — review-agent (`nsalab-beekeeper`)
+- `APP_CLIENT_ID`, `APP_PRIVATE_KEY` — Layer 2 workflows (`nsalab-automation`)
+- `ANTHROPIC_API_KEY` — Claude API (all Layer 3 workflows)
+
+Repo-specific secrets remain per-repo (e.g., `SCAFFOLD_TOKEN` in github-automation).
 
 ### Bot event behavior
 
@@ -341,4 +348,4 @@ GitHub Actions workflows are NOT triggered by events created via App tokens (saf
 - [Issue #112](https://github.com/nsalab-tmn/github-automation/issues/112) — engineering agent implementation and testing
 - [Issue #130](https://github.com/nsalab-tmn/github-automation/issues/130) — drift-detect awareness improvements
 - [Issue #135](https://github.com/nsalab-tmn/github-automation/issues/135) — review agent implementation
-- [Issue #138](https://github.com/nsalab-tmn/github-automation/issues/138) — separate bot identities (planned)
+- [Issue #138](https://github.com/nsalab-tmn/github-automation/issues/138) — separate bot identities
