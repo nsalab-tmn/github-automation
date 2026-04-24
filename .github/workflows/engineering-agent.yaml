@@ -160,10 +160,10 @@ jobs:
         run: |
           echo "::group::Claiming issue"
 
-          # Assign to nsalab-automation[bot]
+          # Assign to nsalab-mechanic[bot]
           # Note: GitHub App tokens create assignments as the app's bot user
           gh api "repos/${ISSUE_REPO}/issues/${ISSUE_NUMBER}/assignees" \
-            -f "assignees[]=nsalab-automation[bot]" >/dev/null 2>&1 || true
+            -f "assignees[]=nsalab-mechanic[bot]" >/dev/null 2>&1 || true
 
           # Move to In Progress on project board
           # Get project item ID for this issue
@@ -472,8 +472,8 @@ jobs:
           OBJECTIVE=$(jq -r '.brief.objective' ../brief.json)
 
           git add -A
-          git -c user.name="nsalab-automation[bot]" \
-              -c user.email="nsalab-automation[bot]@users.noreply.github.com" \
+          git -c user.name="nsalab-mechanic[bot]" \
+              -c user.email="nsalab-mechanic[bot]@users.noreply.github.com" \
               commit -m "$COMMIT_MSG"
           git push origin "$BRANCH"
 
@@ -512,7 +512,72 @@ jobs:
           echo "pr_url=${PR_URL}" >> "$GITHUB_OUTPUT"
           echo "::notice::PR created: ${PR_URL}"
 
-      # Step 7: Post attempt record
+      # Step 7: Handle no-changes (move to Blocked + needs-triage)
+      - name: Handle no changes
+        if: steps.select.outputs.selected == 'true' && steps.implement.outputs.changes_made == 'false' && inputs.dry-run != true
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          ISSUE_REPO: ${{ steps.select.outputs.issue_repo }}
+          ISSUE_NUMBER: ${{ steps.select.outputs.issue_number }}
+          PROJECT_NUMBER: ${{ steps.config.outputs.project_number }}
+          STATUS_BLOCKED: ${{ steps.config.outputs.status_blocked }}
+        run: |
+          # Add needs-triage label
+          gh api "repos/${ISSUE_REPO}/issues/${ISSUE_NUMBER}/labels" \
+            -f "labels[]=needs-triage" >/dev/null 2>&1 || true
+
+          # Move to Blocked
+          ISSUE_ID=$(jq -r '.issue_id' selected-issue.json)
+          if [[ -n "$ISSUE_ID" && "$ISSUE_ID" != "null" ]]; then
+            PROJECT_DATA=$(gh api graphql -f query='
+              query($org: String!, $number: Int!) {
+                organization(login: $org) {
+                  projectV2(number: $number) {
+                    id
+                    field(name: "Status") {
+                      ... on ProjectV2SingleSelectField {
+                        id
+                        options { id name }
+                      }
+                    }
+                  }
+                }
+              }
+            ' -f org=nsalab-tmn -F number="$PROJECT_NUMBER")
+
+            PROJECT_ID=$(echo "$PROJECT_DATA" | jq -r '.data.organization.projectV2.id')
+            STATUS_FIELD_ID=$(echo "$PROJECT_DATA" | jq -r '.data.organization.projectV2.field.id')
+            BLOCKED_ID=$(echo "$PROJECT_DATA" | jq -r --arg s "$STATUS_BLOCKED" \
+              '.data.organization.projectV2.field.options[] | select(.name == $s) | .id')
+
+            ITEM_ID=$(gh api graphql -f query='
+              query($issueId: ID!) {
+                node(id: $issueId) {
+                  ... on Issue {
+                    projectItems(first: 10) {
+                      nodes { id project { number } }
+                    }
+                  }
+                }
+              }
+            ' -f issueId="$ISSUE_ID" | jq -r --argjson pn "$PROJECT_NUMBER" \
+              '.data.node.projectItems.nodes[] | select(.project.number == $pn) | .id')
+
+            if [[ -n "$ITEM_ID" && "$ITEM_ID" != "null" ]]; then
+              gh api graphql -f query='
+                mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
+                  updateProjectV2ItemFieldValue(input: {
+                    projectId: $projectId, itemId: $itemId, fieldId: $fieldId,
+                    value: { singleSelectOptionId: $optionId }
+                  }) { projectV2Item { id } }
+                }
+              ' -f projectId="$PROJECT_ID" -f itemId="$ITEM_ID" \
+                -f fieldId="$STATUS_FIELD_ID" -f optionId="$BLOCKED_ID" >/dev/null
+            fi
+          fi
+          echo "::warning::No changes produced — moved to Blocked with needs-triage"
+
+      # Step 8: Post attempt record
       - name: Record attempt
         if: always() && steps.select.outputs.selected == 'true' && steps.brief.outputs.workable == 'true' && inputs.dry-run != true
         env:
