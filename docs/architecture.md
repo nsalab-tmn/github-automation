@@ -1,6 +1,12 @@
 # Enforcement Architecture
 
-How convention enforcement works across the `nsalab-tmn` organization. Four layers, each handling what it's best at.
+A practical architecture for maintaining engineering standards across a multi-repo GitHub organization using a combination of platform settings, deterministic workflows, and AI-assisted automation. The system is designed so that convention enforcement is as cheap and automatic as possible — human judgment is reserved for decisions that genuinely need it.
+
+The architecture scales from a single project to an organization with dozens of repositories, and from a solo maintainer to a team. Every component is open source, uses standard GitHub features, and can be adopted incrementally — start with Layer 0 settings, add Layer 2 workflows when manual processes become repetitive, and introduce Layer 3 agents when the volume of routine work justifies AI-assisted automation.
+
+---
+
+How convention enforcement works across the organization. Four layers, each handling what it's best at.
 
 ## Layers overview
 
@@ -38,7 +44,7 @@ Requires GitHub Teams plan ($4/user/month). Currently active.
 | Org-wide ruleset: require PR | No direct pushes to main across all repos | ✅ Active |
 | Org-wide ruleset: require PR Validation | PRs must pass validation before merge | ✅ Active |
 | Org-wide ruleset: block force push | History cannot be rewritten | ✅ Active |
-| Org-level secrets | Single source for `APP_ID`, `APP_PRIVATE_KEY`, `ANTHROPIC_API_KEY` | ✅ Active |
+| Org-level secrets | Single source for App credentials and API keys | ✅ Active |
 
 ### GitHub Projects automation
 
@@ -182,7 +188,7 @@ Finding types:
 - `stale_docs` — convention doc is outdated vs actual practice
 - `inconsistency` — repos handle the same thing differently without documented reason
 
-Issues are created as `nsalab-automation[bot]` (GitHub App) with `compliance` label. Dedup via HTML markers prevents duplicates across runs.
+Issues are created as `nsalab-librarian[bot]` (GitHub App) with `compliance` label. Dedup via HTML markers prevents duplicates across runs.
 
 **Awareness filtering** — before creating an issue, drift-detect checks the compliance state of each repo:
 
@@ -221,14 +227,14 @@ Picks issues from the project board backlog and implements them autonomously. Th
 
 | Event | Transition | Signal |
 |---|---|---|
-| Agent picks issue | Backlog → In progress | Assigns `nsalab-automation[bot]` |
+| Agent picks issue | Backlog → In progress | Assigns `nsalab-mechanic[bot]` |
 | Agent creates PR | In progress → In review | Layer 1 (PR linked to issue) |
 | Agent finds non-PR issue | In progress → Blocked | `needs-triage` label |
 | Agent verifies already fixed | — | Closes issue with evidence |
 | Agent fails 3 times | In progress → Backlog | `needs-triage` label |
 | Reviewer merges PR | In review → Done | Layer 1 (item closed) |
 
-**Safety invariants**: agent never merges PRs (human review required), never pushes to main (feature branches only), concurrency group prevents parallel runs.
+**Safety invariants**: agent never merges PRs (human review required), never pushes to main (feature branches only), concurrency group prevents parallel runs. See [version-control-only principle](#version-control-only-principle) below.
 
 ### Review agent
 
@@ -284,6 +290,55 @@ drift-detect              engineering-agent           review-agent
 **The full cycle**: drift-detect finds problems → engineering agent fixes them → review agent validates the fix → human merges. Drift-detect suppresses findings that already have open PRs or were recently fixed.
 
 Issues that can't be fixed via PR (API operations, manual settings) are triaged to Blocked with `needs-triage` for human attention.
+
+### Version-control-only principle
+
+**Autonomous agents MUST NEVER make changes that cannot be version controlled.** Every agent action must produce an auditable, reviewable, revertable artifact — a commit, a PR, or an issue comment.
+
+This means agents are explicitly forbidden from:
+- Editing GitHub issue or PR bodies directly (not version controlled)
+- Creating or modifying labels, milestones, or project board settings
+- Changing repository settings (description, merge rules, branch protection)
+- Calling `gh repo edit`, `gh label create`, or similar administrative commands
+- Any GitHub API mutation that modifies state outside of git-tracked files
+
+When an agent encounters an issue that requires these operations, it must flag the issue as `workable: false` with blocker type `needs_human_decision` and move it to Blocked with `needs-triage`. Humans perform non-version-controlled operations.
+
+**Why this matters:**
+- Version-controlled changes can be reviewed in PRs before taking effect
+- If an agent makes a mistake, `git revert` fixes it
+- The full history of what changed, when, and why is preserved in git
+- Non-version-controlled changes (labels, settings, issue bodies) have no review gate, no revert mechanism, and limited audit trail
+
+The only exceptions are operational side effects of the agent's workflow:
+- Posting issue comments (append-only, used for attempt tracking)
+- Updating project board status (state machine transitions)
+- Assigning issues (concurrency signals)
+
+These are operational metadata, not content changes, and are logged in the workflow run.
+
+### Shared scripts
+
+All Layer 3 workflows share a common library of scripts:
+
+| Script | Purpose |
+|---|---|
+| `parse-config.sh` | Parse YAML agent config into key=value outputs |
+| `resolve-kb.sh` | Look up knowledge base repo for a target repo |
+| `set-board-status.sh` | Update issue status on the project board |
+| `claim-issue.sh` | Assign bot + move to In Progress + post comment |
+| `mark-needs-triage.sh` | Add needs-triage label + move to Blocked |
+| `record-attempt.sh` | Post structured attempt tracking comment |
+| `close-resolved.sh` | Close issue with evidence comment |
+| `session-summary.sh` | Write step summary to workflow output |
+
+Workflow-specific scripts follow the Gather → Decide → Execute pattern:
+
+| Workflow | Gather | Decide | Execute |
+|---|---|---|---|
+| drift-detect | `gather-drift-state.sh`, `gather-compliance-state.sh` | `drift-detect.py` | inline (actions/github-script) |
+| engineering-agent | `select-issue.sh`, `check-blocked.sh`, `gather-issue-context.sh` | `compile-brief.py` | Claude Code CLI |
+| review-agent | `select-pr.sh`, `gather-pr-context.sh` | `review-pr.py` | `post-review.sh` |
 
 ### Maturation principle
 
