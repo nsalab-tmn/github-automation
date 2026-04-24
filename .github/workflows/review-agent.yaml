@@ -174,136 +174,20 @@ jobs:
           jq '.' review.json
           echo "::endgroup::"
 
-      # Step 4: Post review (Execute phase, skipped in dry-run)
+      # Step 4: Post review + handle REQUEST_CHANGES (skipped in dry-run)
       - name: Post review
         if: steps.select.outputs.selected == 'true' && inputs.dry-run != true
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_REPO: ${{ steps.select.outputs.pr_repo }}
           PR_NUMBER: ${{ steps.select.outputs.pr_number }}
-        run: |
-          DECISION=$(jq -r '.decision' review.json)
-          CONFIDENCE=$(jq -r '.confidence' review.json)
-          SUMMARY=$(jq -r '.summary' review.json)
-          ADDRESSES=$(jq -r 'if .addresses_issue then "x" else " " end' review.json)
-          FOLLOWS=$(jq -r 'if .follows_conventions then "x" else " " end' review.json)
-          MINIMAL=$(jq -r 'if .minimal_change then "x" else " " end' review.json)
-          ISSUES=$(jq -r '.issues_found | if length > 0 then map("- **\(.severity)** `\(.file)`:\(.line) — \(.description)") | join("\n") else "" end' review.json)
-
-          REVIEW_EVENT=$(echo "$DECISION" | sed 's/approve/APPROVE/;s/request_changes/REQUEST_CHANGES/;s/comment/COMMENT/')
-
-          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-
-          BODY="<!-- review-agent -->
-          ## Review Agent Assessment
-
-          **Decision:** ${REVIEW_EVENT} | **Confidence:** ${CONFIDENCE}
-
-          ### Summary
-          ${SUMMARY}
-
-          ### Checks
-          - [${ADDRESSES}] Addresses linked issue
-          - [${FOLLOWS}] Follows conventions
-          - [${MINIMAL}] Minimal and focused change
-
-          $(if [[ -n "$ISSUES" ]]; then echo "### Issues Found"; echo ""; echo "${ISSUES}"; fi)
-
-          ---
-          *Reviewed by [review agent](${RUN_URL})*
-          <!-- /review-agent -->"
-
-          gh api "repos/${PR_REPO}/pulls/${PR_NUMBER}/reviews" \
-            -f event="$REVIEW_EVENT" \
-            -f body="$BODY"
-
-          echo "::notice::Posted ${REVIEW_EVENT} review on PR #${PR_NUMBER}"
-
-      # Step 5: Handle REQUEST_CHANGES — update board + post issue feedback
-      - name: Handle request changes
-        if: steps.select.outputs.selected == 'true' && steps.review.outputs.decision == 'request_changes' && inputs.dry-run != true
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          PR_REPO: ${{ steps.select.outputs.pr_repo }}
           ISSUE_NUMBER: ${{ steps.select.outputs.issue_number }}
           PROJECT_NUMBER: ${{ steps.config.outputs.project_number }}
           STATUS_IN_PROGRESS: ${{ steps.config.outputs.status_in_progress }}
-        run: |
-          SUMMARY=$(jq -r '.summary' review.json)
-          ISSUES=$(jq -r '.issues_found | map("- **\(.severity)** `\(.file)`:\(.line) — \(.description)") | join("\n")' review.json)
-          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-
-          # Count review attempts on the issue
-          ATTEMPT=$(gh api "repos/${PR_REPO}/issues/${ISSUE_NUMBER}/comments" \
-            --jq '[.[] | select(.body | test("<!-- review:attempt:"))] | length' 2>/dev/null || echo "0")
-          ATTEMPT=$((ATTEMPT + 1))
-
-          # Post feedback on linked issue for engineering agent
-          COMMENT="<!-- review:attempt:${ATTEMPT} -->
-          **Review agent attempt #${ATTEMPT}** — [run #${GITHUB_RUN_NUMBER}](${RUN_URL})
-          **Decision:** REQUEST_CHANGES
-
-          **Issues to fix:**
-          ${ISSUES}
-
-          **Summary:** ${SUMMARY}
-          <!-- /review:attempt:${ATTEMPT} -->"
-
-          gh api "repos/${PR_REPO}/issues/${ISSUE_NUMBER}/comments" \
-            -f body="$COMMENT" >/dev/null
-
-          # Move linked issue from In review → In progress
-          # (bot review events don't trigger project-sync, so we do it directly)
-          ISSUE_ID=$(gh api "repos/${PR_REPO}/issues/${ISSUE_NUMBER}" --jq '.node_id' 2>/dev/null || echo "")
-
-          if [[ -n "$ISSUE_ID" && "$ISSUE_ID" != "null" ]]; then
-            PROJECT_DATA=$(gh api graphql -f query='
-              query($org: String!, $number: Int!) {
-                organization(login: $org) {
-                  projectV2(number: $number) {
-                    id
-                    field(name: "Status") {
-                      ... on ProjectV2SingleSelectField {
-                        id
-                        options { id name }
-                      }
-                    }
-                  }
-                }
-              }
-            ' -f org=nsalab-tmn -F number="$PROJECT_NUMBER")
-
-            PROJECT_ID=$(echo "$PROJECT_DATA" | jq -r '.data.organization.projectV2.id')
-            STATUS_FIELD_ID=$(echo "$PROJECT_DATA" | jq -r '.data.organization.projectV2.field.id')
-            IN_PROGRESS_ID=$(echo "$PROJECT_DATA" | jq -r --arg s "$STATUS_IN_PROGRESS" \
-              '.data.organization.projectV2.field.options[] | select(.name == $s) | .id')
-
-            ITEM_ID=$(gh api graphql -f query='
-              query($issueId: ID!) {
-                node(id: $issueId) {
-                  ... on Issue {
-                    projectItems(first: 10) {
-                      nodes { id project { number } }
-                    }
-                  }
-                }
-              }
-            ' -f issueId="$ISSUE_ID" | jq -r --argjson pn "$PROJECT_NUMBER" \
-              '.data.node.projectItems.nodes[] | select(.project.number == $pn) | .id')
-
-            if [[ -n "$ITEM_ID" && "$ITEM_ID" != "null" ]]; then
-              gh api graphql -f query='
-                mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
-                  updateProjectV2ItemFieldValue(input: {
-                    projectId: $projectId, itemId: $itemId, fieldId: $fieldId,
-                    value: { singleSelectOptionId: $optionId }
-                  }) { projectV2Item { id } }
-                }
-              ' -f projectId="$PROJECT_ID" -f itemId="$ITEM_ID" \
-                -f fieldId="$STATUS_FIELD_ID" -f optionId="$IN_PROGRESS_ID" >/dev/null
-              echo "::notice::Moved issue #${ISSUE_NUMBER} to In progress"
-            fi
-          fi
+          REVIEW_FILE: review.json
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: ./scripts/post-review.sh
 
       # Step 6: Session summary
       - name: Session summary
