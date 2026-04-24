@@ -160,21 +160,13 @@ jobs:
         run: |
           echo "::group::Claiming issue"
 
-          # Assign the bot using its user node ID (REST is unreliable for bot users)
+          # Assign the mechanic bot to the issue
           ISSUE_ID=$(jq -r '.issue_id' selected-issue.json)
-          BOT_LOGIN="${GH_TOKEN_APP_SLUG:-nsalab-mechanic}[bot]"
-          BOT_ID=$(gh api "users/${BOT_LOGIN}" --jq '.node_id' 2>/dev/null || echo "")
-          if [[ -n "$BOT_ID" && "$BOT_ID" != "null" && -n "$ISSUE_ID" ]]; then
-            gh api graphql -f query='
-              mutation($assignable: ID!, $assignee: ID!) {
-                addAssigneesToAssignable(input: {assignableId: $assignable, assigneeIds: [$assignee]}) {
-                  assignable { ... on Issue { number } }
-                }
-              }
-            ' -f assignable="$ISSUE_ID" -f assignee="$BOT_ID" >/dev/null 2>&1 && \
-              echo "::notice::Assigned ${BOT_LOGIN} to issue" || \
-              echo "::warning::Failed to assign ${BOT_LOGIN}" >&2
-          fi
+          RESULT=$(gh api "repos/${ISSUE_REPO}/issues/${ISSUE_NUMBER}/assignees" \
+            --method POST -f "assignees[]=nsalab-mechanic[bot]" \
+            --jq '[.assignees[].login]' 2>&1) && \
+            echo "::notice::Assigned: ${RESULT}" || \
+            echo "::warning::Assignment failed: ${RESULT}" >&2
 
           # Move to In Progress on project board
 
