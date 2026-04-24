@@ -31,16 +31,19 @@ github-automation/
 ├── .github/
 │   ├── ISSUE_TEMPLATE/          Issue templates
 │   ├── pull_request_template.md PR template
-│   └── workflows/               Reusable workflows (the primary deliverable)
+│   └── workflows/               Reusable + Layer 3 agent workflows
+├── config/                      Agent configurations (YAML)
 ├── docs/
 │   ├── adoption.md              How to adopt workflows in your repo
+│   ├── architecture.md          4-layer enforcement architecture
 │   └── conventions.md           Technical reference, workflow catalog
-├── scripts/
-│   └── scaffold-repo.sh         Repo scaffolding logic
+├── prompts/                     Claude API system prompts
+├── schemas/                     Claude API tool schemas
+├── scripts/                     Shared scripts for agent workflows
 ├── templates/                   Repo scaffolding templates
-│   ├── common/                  Shared across all repo types
-│   ├── ansible/                 Ansible repo type
-│   └── docs/                    Docs repo type
+├── terraform/
+│   ├── configs/                 Org-wide Terraform configs (rulesets)
+│   └── modules/                 Reusable Terraform modules
 ├── README.md                    This file
 └── CONTRIBUTING.md              How to work in this repo
 ```
@@ -63,6 +66,18 @@ github-automation/
 | `reusable-structural-check` | Validate required files, labels, and workflows | Active |
 | `reusable-stale-pr` | Label and manage inactive pull requests | Active |
 | `reusable-pinned-sync` | Auto-update pinned context issue from repo state | Active |
+| `reusable-terraform-plan` | Terraform fmt, validate, plan with PR comment | Active |
+| `reusable-terraform-apply` | Terraform apply on merge | Active |
 | `scaffold-repo` | Create new repos via issue form with org standards | Active |
+| `drift-detect` | Convention drift detection (Layer 3, AI-assisted) | Active |
+| `engineering-agent` | AI engineering agent — picks issues, creates PRs (Layer 3) | Active |
+| `review-agent` | AI review agent — reviews PRs, posts structured reviews (Layer 3) | Active |
 
 See [docs/conventions.md](docs/conventions.md) for the full catalog with inputs/outputs documentation.
+
+## Terraform
+
+Organization settings managed as code in `terraform/`:
+- Org-wide rulesets (require PR, squash merge only, branch naming)
+- Reusable modules for repos, labels, and rulesets
+- Project-specific config lives in `[project]-gitops` repos (created from `template-gitops`)

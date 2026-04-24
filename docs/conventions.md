@@ -59,7 +59,12 @@ This groups reusable workflows visually in the Actions sidebar, separate from ca
 | `reusable-structural-check` | `schedule` | `required-files`, `required-workflows`, `required-labels`, `pinned-label`, `compliance-label` | Validates repo has required files, workflow callers, and labels |
 | `reusable-stale-pr` | `schedule` | `days-before-stale`, `days-before-close`, `stale-label`, `exempt-labels`, `exempt-authors` | Labels inactive PRs as stale, optionally closes drafts |
 | `reusable-pinned-sync` | `issues: [closed]`, `pull_request: [closed]`, `schedule` | `pinned-label` | Auto-updates pinned context issue sections marked with HTML comment markers |
+| `reusable-terraform-plan` | `workflow_call` | `working-directory`, `terraform-version` | Terraform fmt, init, validate, plan, post plan as PR comment |
+| `reusable-terraform-apply` | `workflow_call` | `working-directory`, `terraform-version` | Terraform init, apply |
 | `scaffold-repo` | `issues` (with `repository-request` label) | Issue form fields | Creates a new repo with org standards via issue form |
+| `drift-detect` | `schedule`, `workflow_dispatch` | `dry-run` | Compares repos against conventions, creates compliance issues |
+| `engineering-agent` | `workflow_dispatch` | `issue-url`, `dry-run` | Picks issues from board, implements fixes, creates PRs |
+| `review-agent` | `schedule`, `workflow_dispatch` | `pr-url`, `dry-run` | Reviews AI-generated PRs, posts structured reviews |
 
 ### Caller workflow pattern
 
@@ -151,6 +156,33 @@ permissions:
   contents: read       # default for most workflows
 ```
 
+## Bot identities
+
+Each Layer 3 workflow has its own GitHub App identity:
+
+| Bot | Workflow | Role |
+|-----|----------|------|
+| `nsalab-librarian[bot]` | `drift-detect` | Finds convention drift, creates compliance issues |
+| `nsalab-mechanic[bot]` | `engineering-agent` | Implements fixes, creates PRs |
+| `nsalab-beekeeper[bot]` | `review-agent` | Reviews PRs, posts APPROVE/REQUEST_CHANGES |
+| `nsalab-doorman[bot]` | `terraform-plan/apply` | Manages org rulesets and repo settings via Terraform |
+| `nsalab-automation[bot]` | Layer 2 workflows | Housekeeping (auto-assign, project-sync, etc.) |
+
+## Terraform
+
+Organization settings are managed via Terraform in the `terraform/` directory:
+
+- `configs/rulesets.yaml` — org-wide branch protection rulesets
+- `modules/github_repository/` — reusable module for repo settings
+- `modules/github_issue_labels/` — reusable module for standard label sets
+- `modules/github_organization_ruleset/` — reusable module for org rulesets
+
+CI workflows: `terraform-plan.yaml` (on PR) and `terraform-apply.yaml` (on merge).
+Both are thin callers to `reusable-terraform-plan.yaml` and `reusable-terraform-apply.yaml`.
+
+Project-specific repos (`[project]-gitops`) reference these modules and reusable workflows via `@main`.
+New project repos are created from the `template-gitops` template repository.
+
 ## Actions versions
 
 Pinned to major versions for stability:
@@ -169,3 +201,6 @@ Pinned to major versions for stability:
 - **Reusable workflow bootstrap**: When introducing a new reusable workflow, don't add the caller job in the same PR. The `@main` reference will fail because the workflow doesn't exist on main yet, which breaks the entire workflow file (all jobs fail, not just the new one). Merge the workflow first, then add the caller in a follow-up commit.
 - **project-sync + Layer 1 hybrid**: `project-sync` is designed to work alongside Layer 1 built-in project workflows. Layer 1 handles common transitions (PR linked → In Review, item closed → Done, item reopened → Backlog) with clean single-event timelines. `project-sync` handles only transitions Layer 1 cannot: draft PRs, ready_for_review, review re-requests after changes, and PR closed without merge. Both must be active for full lifecycle coverage.
 - **`pull_request_review` event**: Only fires on `submitted`, not on dismissal. The `changes_requested` state moves the linked issue back to In Progress. The `approved` state is a no-op (stays In Review until merged).
+- **Bot events don't trigger workflows**: GitHub suppresses events from App tokens. The review agent must directly update board status on REQUEST_CHANGES (project-sync won't fire). Drift-detect must manually add new issues to the project board (auto-project won't fire).
+- **Org rulesets block initial commits**: New repos can't receive direct pushes to main. Use template repos (`template-gitops`) or `auto_init` for bootstrapping. Bypass actors may be temporarily added for one-time bootstrap.
+- **GitHub Terraform provider v6.12.0**: Has nil pointer crash in `github_organization_ruleset` with App tokens. Pin to v6.11.1. Modules must declare `required_providers` with `source = "integrations/github"` to avoid legacy `hashicorp/github` namespace resolution.

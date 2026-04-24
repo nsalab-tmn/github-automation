@@ -11,10 +11,10 @@ How convention enforcement works across the organization. Four layers, each hand
 ## Layers overview
 
 ```
-Layer 0: GitHub Settings          ← configure once, automatic, no drift possible
-Layer 1: GitHub Built-ins         ← templates, default labels, issue forms
-Layer 2: Deterministic Workflows  ← IF event THEN action, no judgment
-Layer 3: AI-Assisted Heuristics   ← reads context, exercises judgment
+Layer 0: GitHub Settings + Terraform ← configure once, version-controlled, no drift
+Layer 1: GitHub Built-ins            ← templates, default labels, issue forms
+Layer 2: Deterministic Workflows     ← IF event THEN action, no judgment
+Layer 3: AI-Assisted Heuristics      ← reads context, exercises judgment
 ```
 
 Each layer catches what the one below it can't. The goal is to push enforcement as low as possible — Layer 0 is cheapest, Layer 3 is most expensive.
@@ -60,6 +60,24 @@ GitHub Projects V2 has built-in automation rules that operate independently of G
 | Auto-archive | Archive items matching criteria | ✅ Enabled |
 
 These fire regardless of who created the event (including bots), produce clean single-event timelines, and cannot be configured via API (manual UI setup per project board).
+
+### Terraform-managed settings
+
+Organization settings that require version control and audit trails are managed via Terraform (`nsalab-doorman[bot]`):
+
+| Resource | Terraform module | Config |
+|---|---|---|
+| Org rulesets | `github_organization_ruleset` | `terraform/configs/rulesets.yaml` |
+| Repo settings | `github_repository` (reusable module) | Per-project `configs/repos.yaml` |
+| Labels | `github_issue_label` (reusable module) | Per-project `configs/labels.yaml` |
+
+**Two-tier architecture:**
+- **Org-wide** (`github-automation/terraform/`): rulesets, reusable modules. Public, project-agnostic.
+- **Per-project** (`[project]-gitops/terraform/`): repos, labels, descriptions. Private, project-specific.
+
+New project repos are created from the `template-gitops` template repository. State is stored in Azure Blob Storage.
+
+CI: `terraform plan` on PR (posts plan as comment) → `terraform apply` on merge.
 
 ## Layer 1: GitHub Built-ins
 
