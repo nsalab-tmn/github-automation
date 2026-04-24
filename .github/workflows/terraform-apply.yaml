@@ -1,0 +1,46 @@
+name: terraform-apply
+run-name: "[${{github.run_number}}] Terraform apply [${{github.event_name}}]"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "terraform/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: terraform
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Generate app token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ secrets.DOORMAN_CLIENT_ID }}
+          private-key: ${{ secrets.DOORMAN_PRIVATE_KEY }}
+          owner: nsalab-tmn
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform init
+        run: terraform init
+
+      - name: Terraform apply
+        env:
+          TF_VAR_github_token: ${{ steps.app-token.outputs.token }}
+          TF_VAR_github_owner: nsalab-tmn
+        run: terraform apply -auto-approve
