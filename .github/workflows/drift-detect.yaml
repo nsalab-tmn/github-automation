@@ -254,7 +254,7 @@ jobs:
                   `**Recommendation:** ${finding.recommendation}`,
                   '',
                   `---`,
-                  `*Created by [convention drift detector](https://github.com/apps/nsalab-automation)*`,
+                  `*Created by [convention drift detector](https://github.com/apps/nsalab-librarian)*`,
                 ].join('\n');
 
                 try {
