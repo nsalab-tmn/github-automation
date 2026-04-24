@@ -46,29 +46,10 @@ jobs:
 
       - name: Parse config
         id: config
-        run: |
-          python3 -c "
-          import yaml, json
-          with open('config/review-agent.yaml') as f:
-              config = yaml.safe_load(f)
-          agent = config['agent']
-          print(f\"project_number={agent['project-number']}\")
-          print(f\"max_review_attempts={agent['max-review-attempts']}\")
-          print(f\"auto_merge={agent['auto-merge']}\")
-          eligible = json.dumps(agent['eligible-statuses'])
-          print(f'eligible_statuses={eligible}')
-          req = json.dumps(agent['require-pr-labels'])
-          print(f'require_pr_labels={req}')
-          exc = json.dumps(agent['excluded-pr-labels'])
-          print(f'excluded_pr_labels={exc}')
-          status = agent['status']
-          print(f\"status_in_progress={status['in-progress']}\")
-          print(f\"status_in_review={status['in-review']}\")
-          projects = json.dumps(config['projects'])
-          print(f'projects={projects}')
-          " >> "$GITHUB_OUTPUT"
+        env:
+          CONFIG_FILE: config/review-agent.yaml
+        run: ./scripts/parse-config.sh >> "$GITHUB_OUTPUT"
 
-      # Step 1: Select PR
       - name: Select PR
         id: select
         env:
@@ -79,102 +60,54 @@ jobs:
           REQUIRE_PR_LABELS: ${{ steps.config.outputs.require_pr_labels }}
           EXCLUDED_PR_LABELS: ${{ steps.config.outputs.excluded_pr_labels }}
           MAX_REVIEW_ATTEMPTS: ${{ steps.config.outputs.max_review_attempts }}
+          MANUAL_PR_URL: ${{ inputs.pr-url }}
         run: |
-          echo "::group::PR selection"
-
-          if [[ -n "${{ inputs.pr-url }}" ]]; then
-            URL="${{ inputs.pr-url }}"
-            REPO=$(echo "$URL" | grep -oP 'github\.com/\K[^/]+/[^/]+')
-            NUM=$(echo "$URL" | grep -oP '/pull/\K\d+')
-            echo "::notice::Manual PR: ${REPO}#${NUM}"
-
-            PR=$(gh api "repos/${REPO}/pulls/${NUM}" --jq '{
-              pr_number: .number,
-              pr_title: .title,
-              pr_branch: .head.ref,
-              pr_sha: .head.sha,
-              issue_repo: (.base.repo.full_name),
+          if [[ -n "$MANUAL_PR_URL" ]]; then
+            REPO=$(echo "$MANUAL_PR_URL" | grep -oP 'github\.com/\K[^/]+/[^/]+')
+            NUM=$(echo "$MANUAL_PR_URL" | grep -oP '/pull/\K\d+')
+            gh api "repos/${REPO}/pulls/${NUM}" --jq '{
+              pr_number: .number, pr_title: .title, pr_branch: .head.ref,
+              pr_sha: .head.sha, issue_repo: .base.repo.full_name,
               issue_number: (.body | capture("(?i)closes\\s+#(?<n>\\d+)") | .n | tonumber)
-            }' 2>/dev/null || echo "")
-
-            if [[ -z "$PR" ]]; then
-              echo "::error::Could not fetch PR from URL: ${URL}"
-              exit 1
-            fi
-            PR=$(echo "$PR" | jq --arg repo "$REPO" '.issue_repo = $repo')
-            echo "$PR" > selected-pr.json
+            }' > selected-pr.json
           else
             ./scripts/select-pr.sh > selected-pr.json
           fi
 
           if [[ ! -s selected-pr.json ]] || [[ "$(cat selected-pr.json)" == "" ]]; then
-            echo "::notice::No eligible PRs found — exiting"
             echo "selected=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-
           echo "selected=true" >> "$GITHUB_OUTPUT"
-          PR_NUM=$(jq -r '.pr_number' selected-pr.json)
-          PR_REPO=$(jq -r '.issue_repo' selected-pr.json)
-          ISSUE_NUM=$(jq -r '.issue_number' selected-pr.json)
-          echo "pr_number=${PR_NUM}" >> "$GITHUB_OUTPUT"
-          echo "pr_repo=${PR_REPO}" >> "$GITHUB_OUTPUT"
-          echo "issue_number=${ISSUE_NUM}" >> "$GITHUB_OUTPUT"
+          echo "pr_number=$(jq -r '.pr_number' selected-pr.json)" >> "$GITHUB_OUTPUT"
+          echo "pr_repo=$(jq -r '.issue_repo' selected-pr.json)" >> "$GITHUB_OUTPUT"
+          echo "issue_number=$(jq -r '.issue_number' selected-pr.json)" >> "$GITHUB_OUTPUT"
 
-          cat selected-pr.json
-          echo "::endgroup::"
-
-      # Step 2: Gather PR context
       - name: Gather PR context
         if: steps.select.outputs.selected == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_REPO: ${{ steps.select.outputs.pr_repo }}
           PR_NUMBER: ${{ steps.select.outputs.pr_number }}
+          PROJECTS_JSON: ${{ steps.config.outputs.projects }}
+          TARGET_REPO: ${{ steps.select.outputs.pr_repo }}
         run: |
-          echo "::group::Gathering PR context"
-
-          KB_INFO=$(echo '${{ steps.config.outputs.projects }}' | jq -r --arg repo "$PR_REPO" '
-            .[] | select(.repos | index($repo)) |
-            "\(.["knowledge-base"]) \(.["conventions-path"])"
-          ')
+          KB_INFO=$(./scripts/resolve-kb.sh)
           export KB_REPO=$(echo "$KB_INFO" | awk '{print $1}')
           export KB_CONV_PATH=$(echo "$KB_INFO" | awk '{print $2}')
-
-          if [[ -z "$KB_REPO" || "$KB_REPO" == "null" ]]; then
-            export KB_REPO="nsalab-tmn/cheburnet-knowledge-base"
-            export KB_CONV_PATH="conventions"
-          fi
-
           ./scripts/gather-pr-context.sh > pr-context.json
-          echo "::notice::Context gathered ($(wc -c < pr-context.json) bytes)"
-          echo "::endgroup::"
 
-      # Step 3: Review (Decide phase)
       - name: Compile review
         id: review
         if: steps.select.outputs.selected == 'true'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          echo "::group::Compiling review"
+          python3 ./scripts/review-pr.py pr-context.json prompts/review-brief.md schemas/review-pr.json > review.json
+          echo "decision=$(jq -r '.decision' review.json)" >> "$GITHUB_OUTPUT"
+          echo "confidence=$(jq -r '.confidence' review.json)" >> "$GITHUB_OUTPUT"
+          echo "::notice::Decision: $(jq -r '.decision' review.json), Confidence: $(jq -r '.confidence' review.json)"
 
-          python3 ./scripts/review-pr.py \
-            pr-context.json \
-            prompts/review-brief.md \
-            schemas/review-pr.json \
-            > review.json
-
-          DECISION=$(jq -r '.decision' review.json)
-          CONFIDENCE=$(jq -r '.confidence' review.json)
-          echo "decision=${DECISION}" >> "$GITHUB_OUTPUT"
-          echo "confidence=${CONFIDENCE}" >> "$GITHUB_OUTPUT"
-
-          echo "::notice::Decision: ${DECISION}, Confidence: ${CONFIDENCE}"
-          jq '.' review.json
-          echo "::endgroup::"
-
-      # Step 4: Post review + handle REQUEST_CHANGES (skipped in dry-run)
       - name: Post review
         if: steps.select.outputs.selected == 'true' && inputs.dry-run != true
         env:
@@ -189,30 +122,15 @@ jobs:
           RUN_NUMBER: ${{ github.run_number }}
         run: ./scripts/post-review.sh
 
-      # Step 6: Session summary
       - name: Session summary
         if: always()
-        run: |
-          if [[ "${{ inputs.dry-run }}" == "true" ]]; then
-            echo "## Review Agent — DRY RUN" >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "## Review Agent Session" >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-          if [[ "${{ steps.select.outputs.selected }}" != "true" ]]; then
-            echo "No eligible PRs found." >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-
-          echo "**PR:** ${{ steps.select.outputs.pr_repo }}#${{ steps.select.outputs.pr_number }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Issue:** #${{ steps.select.outputs.issue_number }}" >> "$GITHUB_STEP_SUMMARY"
-
-          if [[ -f review.json ]]; then
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo "**Decision:** ${{ steps.review.outputs.decision }}" >> "$GITHUB_STEP_SUMMARY"
-            echo "**Confidence:** ${{ steps.review.outputs.confidence }}" >> "$GITHUB_STEP_SUMMARY"
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-            jq -r '"**Summary:** \(.summary)"' review.json >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-            jq -r '"- Addresses issue: \(.addresses_issue)\n- Follows conventions: \(.follows_conventions)\n- Minimal change: \(.minimal_change)\n- Auto-merge eligible: \(.auto_merge_eligible)"' review.json >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
-          fi
+        env:
+          AGENT_NAME: Review Agent
+          DRY_RUN: ${{ inputs.dry-run || 'false' }}
+          SELECTED: ${{ steps.select.outputs.selected }}
+          SUMMARY_ITEM: "${{ steps.select.outputs.pr_repo }}#${{ steps.select.outputs.pr_number }}"
+          SUMMARY_EXTRA: "**Issue:** #${{ steps.select.outputs.issue_number }}"
+          RESULT_FILE: review.json
+          RESULT_FIELDS: >-
+            "**Decision:** \(.decision)\n**Confidence:** \(.confidence)\n**Summary:** \(.summary)\n\n- Addresses issue: \(.addresses_issue)\n- Follows conventions: \(.follows_conventions)\n- Minimal change: \(.minimal_change)\n- Auto-merge eligible: \(.auto_merge_eligible)"
+        run: ./scripts/session-summary.sh
