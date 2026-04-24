@@ -24,8 +24,13 @@ examining the current repo state (file tree, recent PRs, recent commits).
 Set `already_resolved: true` when:
 - For drift-detect issues: the "Expected" state now matches the current repo
   state (e.g., the missing file now exists, the config was corrected)
+- For drift-detect inconsistency issues: the deviation is already documented
+  in the repo's `docs/conventions.md` or the knowledge base, making the issue
+  moot (the inconsistency was intentional and documented)
 - For bug reports: recent commits or PRs already address the described problem
 - For any issue: the file tree or repo state shows the fix is already in place
+- When no code changes are actually needed — the issue describes a problem
+  that has already been addressed by previous work
 
 When `already_resolved: true`, populate `resolution_comment` with specific
 evidence (which files exist, which PR fixed it, what the current state is).
