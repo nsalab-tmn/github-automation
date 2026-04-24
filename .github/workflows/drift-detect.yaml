@@ -43,7 +43,15 @@ jobs:
               config = yaml.safe_load(f)
           print(json.dumps(config['projects']))
           " > projects.json
+          # Read project number from engineering-agent config
+          python3 -c "
+          import yaml
+          with open('config/engineering-agent.yaml') as f:
+              config = yaml.safe_load(f)
+          print(config['agent']['project-number'])
+          " > project-number.txt
           echo "count=$(jq length projects.json)" >> "$GITHUB_OUTPUT"
+          echo "project_number=$(cat project-number.txt)" >> "$GITHUB_OUTPUT"
 
       - name: Gather and analyze each project
         env:
@@ -96,10 +104,8 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           ORG: nsalab-tmn
+          PROJECT_NUMBER: ${{ steps.config.outputs.project_number }}
         run: |
-          # Read project number from engineering-agent config
-          PROJECT_NUMBER=$(python3 -c "import yaml; print(yaml.safe_load(open('config/engineering-agent.yaml'))['agent']['project-number'])")
-          export PROJECT_NUMBER
 
           echo "::group::Gathering compliance state (project #${PROJECT_NUMBER})"
           COMPLIANCE_STATE="{}"
@@ -145,8 +151,7 @@ jobs:
             // Fetch project board IDs once (for adding new issues to board)
             let projectId, statusFieldId, backlogOptionId;
             try {
-              const projectNumber = JSON.parse(fs.readFileSync('config/engineering-agent.yaml', 'utf8')
-                .match(/project-number:\s*(\d+)/)?.[0]?.replace('project-number: ', '') || '6');
+              const projectNumber = parseInt(fs.readFileSync('project-number.txt', 'utf8').trim()) || 6;
               const pData = await github.graphql(`
                 query($org: String!, $number: Int!) {
                   organization(login: $org) {
@@ -200,20 +205,20 @@ jobs:
                 if (existingOpen) {
                   // Check 1a: Has needs-triage label
                   if (existingOpen.labels?.includes('needs-triage')) {
-                    core.info(`Suppressed (needs-triage): ${repoFull} — ${convFile} (existing #${existingOpen.number})`);
+                    core.notice(`Suppressed (needs-triage): ${repoFull} — ${convFile} (existing #${existingOpen.number})`);
                     decisions.push({ repo: repoFull, finding: convFile, action: 'skip-needs-triage', issue: existingOpen.number });
                     totalSuppressed++;
                     continue;
                   }
                   // Check 1b: Has open PR
                   if (existingOpen.has_open_pr) {
-                    core.info(`Suppressed (PR open): ${repoFull} — ${convFile} (existing #${existingOpen.number})`);
+                    core.notice(`Suppressed (PR open): ${repoFull} — ${convFile} (existing #${existingOpen.number})`);
                     decisions.push({ repo: repoFull, finding: convFile, action: 'skip-pr-open', issue: existingOpen.number });
                     totalSuppressed++;
                     continue;
                   }
                   // Default: existing open issue without PR or triage
-                  core.info(`Skipped duplicate: ${repoFull} — ${convFile} (existing #${existingOpen.number})`);
+                  core.notice(`Skipped duplicate: ${repoFull} — ${convFile} (existing #${existingOpen.number})`);
                   decisions.push({ repo: repoFull, finding: convFile, action: 'skip-duplicate', issue: existingOpen.number });
                   totalSkipped++;
                   continue;
@@ -222,7 +227,7 @@ jobs:
                 // Check 2: Recently closed issue with same marker (completed within suppression window)
                 const recentlyClosed = closedIssues.find(i => i.marker === findingId && i.state_reason === 'completed');
                 if (recentlyClosed) {
-                  core.info(`Suppressed (recently fixed): ${repoFull} — ${convFile} (closed #${recentlyClosed.number} at ${recentlyClosed.closed_at})`);
+                  core.notice(`Suppressed (recently fixed): ${repoFull} — ${convFile} (closed #${recentlyClosed.number} at ${recentlyClosed.closed_at})`);
                   decisions.push({ repo: repoFull, finding: convFile, action: 'skip-recently-fixed', issue: recentlyClosed.number });
                   totalSuppressed++;
                   continue;
@@ -232,7 +237,7 @@ jobs:
                 decisions.push({ repo: repoFull, finding: convFile, action: 'create' });
 
                 if (dryRun) {
-                  core.info(`[DRY RUN] Would create issue in ${repoFull}: Convention ${finding.type}: ${convFile}`);
+                  core.notice(`[DRY RUN] Would create issue in ${repoFull}: Convention ${finding.type}: ${convFile}`);
                   totalCreated++;
                   continue;
                 }
