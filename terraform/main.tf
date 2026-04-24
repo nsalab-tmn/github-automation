@@ -7,6 +7,8 @@ module "github_organization_ruleset" {
 
   source = "./modules/github_organization_ruleset"
 
+  org           = var.github_owner
+  github_token  = var.github_token
   name          = each.value.name
   target        = each.value.target
   enforcement   = each.value.enforcement
