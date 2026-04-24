@@ -45,11 +45,14 @@ resource "github_organization_ruleset" "this" {
       for_each = lookup(var.rules, "required_status_checks", null) != null ? [var.rules.required_status_checks] : []
 
       content {
+        strict_required_status_checks_policy = lookup(required_status_checks.value, "strict", false)
+
         dynamic "required_check" {
-          for_each = required_status_checks.value
+          for_each = lookup(required_status_checks.value, "checks", [])
 
           content {
-            context = required_check.value.context
+            context        = required_check.value.context
+            integration_id = lookup(required_check.value, "integration_id", null)
           }
         }
       }
