@@ -1,3 +1,14 @@
+variable "org" {
+  type        = string
+  description = "GitHub organization name"
+}
+
+variable "github_token" {
+  type        = string
+  sensitive   = true
+  description = "GitHub token for gh CLI"
+}
+
 variable "name" {
   type        = string
   description = "Ruleset name"
