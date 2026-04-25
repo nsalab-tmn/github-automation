@@ -15,6 +15,13 @@ module "github_organization_ruleset" {
   rules         = each.value.rules
 }
 
+# Labels for this repo (github-automation)
+module "github_automation_labels" {
+  source     = "./modules/github_issue_labels"
+  repository = "github-automation"
+  labels     = local.labels.labels
+}
+
 # GitOps repositories (created from template-gitops)
 module "gitops_repo" {
   for_each = {
