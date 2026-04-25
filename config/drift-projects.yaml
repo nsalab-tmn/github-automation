@@ -1,3 +1,5 @@
+project-number: 6
+
 projects:
   - name: cheburnet
     knowledge-base: nsalab-tmn/cheburnet-knowledge-base
