@@ -103,8 +103,8 @@ jobs:
           echo '```json' >> "$GITHUB_STEP_SUMMARY"
           cat decomposition.json >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
-          # Also print sub-issue titles to log
-          jq -r '.sub_issues[] | "Phase \(.phase): \(.title)"' decomposition.json
+          # Print full decomposition to log for CLI access
+          jq '.' decomposition.json
 
       - name: Handle no decomposition needed
         if: steps.decompose.outputs.needs_decomposition == 'false'
