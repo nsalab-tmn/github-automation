@@ -34,6 +34,9 @@ env:
 
 jobs:
   apply:
+    concurrency:
+      group: terraform-${{ github.repository }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -79,3 +82,4 @@ jobs:
           ARM_TENANT_ID: ${{ secrets.arm-tenant-id }}
           ARM_SUBSCRIPTION_ID: ${{ secrets.arm-subscription-id }}
         run: terraform apply -auto-approve
+

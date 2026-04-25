@@ -34,6 +34,9 @@ env:
 
 jobs:
   plan:
+    concurrency:
+      group: terraform-${{ github.repository }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -139,3 +142,4 @@ jobs:
       - name: Check plan result
         if: steps.plan.outcome == 'failure'
         run: exit 1
+
