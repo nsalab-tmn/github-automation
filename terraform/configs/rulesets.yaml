@@ -27,6 +27,7 @@ rulesets:
       non_fast_forward: true
       required_status_checks:
         strict: false
+        do_not_enforce_on_create: true
         checks:
           - context: "PR Validation"
 
