@@ -98,6 +98,20 @@ Agents reconstruct the repo's purpose from these signals:
 | Upstream issue | Create-repo form (optional) | The issue that triggered repo creation — detailed requirements |
 | Knowledge base | Project-specific KB repo | Cross-repo conventions (ansible patterns, SOPS, CI/CD, etc.) |
 | Hidden agent prompts | `template-generic` docs | Specific instructions for each section to fill |
+| Template markers | `<!-- TEMPLATE: -->` in docs | Uncustomized sections — gather script reports `has_template_markers` flag |
+| Doc compliance signals | Gather script (deterministic) | `has_template_markers`, `links_to_kb`, `has_project_name` — targeted boolean checks |
+
+### Drift-detect integration
+
+The gather script checks documentation files for specific signals rather than sending full content to Claude:
+
+| Signal | What it checks | How detected |
+|--------|---------------|--------------|
+| `has_template_markers` | `<!-- TEMPLATE: -->` or `<!-- AGENT: -->` present in docs | grep in README.md, CONTRIBUTING.md, docs/conventions.md |
+| `links_to_kb` | Docs reference the project's knowledge base URL | grep for KB repo name |
+| `has_project_name` | README heading is project-specific, not generic "Project GitOps" | First `#` heading check |
+
+These boolean signals give Claude clear compliance criteria without requiring full file content in the API call.
 
 ## Identity and auth
 
