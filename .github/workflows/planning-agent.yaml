@@ -100,11 +100,17 @@ jobs:
         if: steps.decompose.outputs.needs_decomposition == 'true' && inputs.dry-run == true
         run: |
           echo "## Decomposition preview" >> "$GITHUB_STEP_SUMMARY"
-          echo '```json' >> "$GITHUB_STEP_SUMMARY"
-          cat decomposition.json >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          # Print full decomposition to log for CLI access
-          jq '.' decomposition.json
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          # Summary table — enough for debug, no full issue bodies
+          echo "| Phase | Title | Deps | Labels | Body size |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|-------|------|--------|-----------|" >> "$GITHUB_STEP_SUMMARY"
+          jq -r '.sub_issues[] | "| \(.phase) | \(.title) | \(.depends_on_phases | join(",") | if . == "" then "—" else . end) | \(.labels | join(", ")) | \(.body | length) chars |"' decomposition.json >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Reason:** $(jq -r '.reason' decomposition.json)" >> "$GITHUB_STEP_SUMMARY"
+          # Log: phase titles + dependency graph (no bodies)
+          echo "::group::Decomposition summary"
+          jq -r '.sub_issues[] | "Phase \(.phase): \(.title) [deps: \(.depends_on_phases | join(",") | if . == "" then "none" else . end)] [\(.body | length) chars]"' decomposition.json
+          echo "::endgroup::"
 
       - name: Handle no decomposition needed
         if: steps.decompose.outputs.needs_decomposition == 'false'
