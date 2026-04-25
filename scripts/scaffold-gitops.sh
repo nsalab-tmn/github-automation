@@ -42,7 +42,7 @@ endlog
 
 log "Adding project to gitops config"
 
-CONFIG_FILE="terraform/configs/gitops-projects.yaml"
+export CONFIG_FILE="terraform/configs/gitops-projects.yaml"
 
 if grep -v '^\s*#' "${CONFIG_FILE}" | grep -q "name: ${PROJECT_NAME}$"; then
   echo "::error::Project ${PROJECT_NAME} already exists in ${CONFIG_FILE}"
