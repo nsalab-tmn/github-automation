@@ -325,8 +325,9 @@ jobs:
 
               let summaryBody = `${summaryMarker}\n### Drift Detection Summary\n\n`;
               for (const pf of allFindings) {
-                const emoji = pf.findings.length === 0 ? '🟢' : '🟡';
-                summaryBody += `**${pf.project}:** ${emoji} ${pf.findings.length} finding(s)\n`;
+                const findings = pf.findings || [];
+                const emoji = findings.length === 0 ? '🟢' : '🟡';
+                summaryBody += `**${pf.project}:** ${emoji} ${findings.length} finding(s)\n`;
                 summaryBody += `${pf.summary}\n\n`;
               }
               summaryBody += `Created ${totalCreated}, skipped ${totalSkipped} duplicate(s), suppressed ${totalSuppressed} (triage/PR/recent-fix), added ${totalBoardAdded} to board.\n`;
