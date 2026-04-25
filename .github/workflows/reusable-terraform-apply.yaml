@@ -11,6 +11,10 @@ on:
         type: string
         default: latest
         description: Terraform version to install
+      backend-key:
+        type: string
+        default: ""
+        description: Override backend state key (passed via -backend-config). If empty, uses backend.tf.
     secrets:
       doorman-client-id:
         required: true
@@ -57,7 +61,13 @@ jobs:
           ARM_CLIENT_SECRET: ${{ secrets.arm-client-secret }}
           ARM_TENANT_ID: ${{ secrets.arm-tenant-id }}
           ARM_SUBSCRIPTION_ID: ${{ secrets.arm-subscription-id }}
-        run: terraform init
+          BACKEND_KEY: ${{ inputs.backend-key }}
+        run: |
+          if [ -n "$BACKEND_KEY" ]; then
+            terraform init -backend-config="key=${BACKEND_KEY}"
+          else
+            terraform init
+          fi
 
       - name: Terraform apply
         env:

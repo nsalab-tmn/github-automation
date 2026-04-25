@@ -1,0 +1,30 @@
+name: Create GitOps repository
+description: Create a new project GitOps repo from template-gitops
+labels: [gitops-request]
+body:
+  - type: input
+    id: project-name
+    attributes:
+      label: Project name
+      description: "Will be created as nsalab-tmn/<name>-gitops"
+      placeholder: "myproject"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: One-line repo description
+      placeholder: "GitOps configuration for the myproject project"
+    validations:
+      required: true
+
+  - type: textarea
+    id: justification
+    attributes:
+      label: Justification
+      description: Why does this project need a GitOps repo?
+      placeholder: "This project has N repos that need standardized labels, settings, and branch protection managed via Terraform."
+    validations:
+      required: true

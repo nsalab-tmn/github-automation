@@ -56,3 +56,12 @@ variable "has_discussions" {
   type    = bool
   default = false
 }
+
+variable "template" {
+  type = object({
+    owner      = string
+    repository = string
+  })
+  default     = null
+  description = "Template repo to create from (only used at creation time)"
+}
