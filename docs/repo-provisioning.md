@@ -58,7 +58,7 @@ The new gitops repo is immediately functional — TF workflows, housekeeping, an
 
 1. Open **Create repository** issue form in the project's `[project]-gitops` repo
 2. Fill in: repo name (required), description (required), visibility (required), justification (required), upstream issue (optional)
-3. `scaffold-repo` workflow creates a PR adding the repo to `terraform/configs/repos.yaml` with `template: template-generic`
+3. `create-repo` workflow creates a PR adding the repo to `terraform/configs/repos.yaml` with `template: template-generic`
 4. Terraform plan runs — review the new repo
 5. Merge the PR
 6. Terraform apply creates the repo from `template-generic`
