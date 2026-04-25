@@ -86,6 +86,19 @@ collect_repo_state() {
     fi
   done
 
+  # Documentation files content
+  local docs="{}"
+  for doc in README.md CONTRIBUTING.md docs/conventions.md; do
+    local doc_raw doc_content
+    doc_raw=$(safe_api "" "repos/${repo}/contents/${doc}" --jq '.content')
+    if [[ -n "${doc_raw}" ]]; then
+      doc_content=$(echo "${doc_raw}" | base64 -d 2>/dev/null || true)
+      if [[ -n "${doc_content}" ]]; then
+        docs=$(echo "${docs}" | jq --arg k "${doc}" --arg v "${doc_content}" '. + {($k): $v}')
+      fi
+    fi
+  done
+
   # Issue templates
   local issue_templates
   issue_templates=$(safe_api "[]" "repos/${repo}/contents/.github/ISSUE_TEMPLATE" --jq '[.[].name]')
@@ -159,6 +172,7 @@ collect_repo_state() {
     --argjson files "${file_tree}" \
     --argjson top_dirs "${top_dirs}" \
     --argjson workflows "${workflows}" \
+    --argjson docs "${docs}" \
     --argjson issue_templates "${issue_templates}" \
     --arg pr_template "${pr_template}" \
     --argjson labels "${labels}" \
@@ -171,6 +185,7 @@ collect_repo_state() {
       files: $files,
       top_level_dirs: $top_dirs,
       workflows: $workflows,
+      docs: $docs,
       issue_templates: $issue_templates,
       pr_template: ($pr_template == "true"),
       labels: $labels,
