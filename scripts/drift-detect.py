@@ -25,7 +25,7 @@ def main():
 
     response = client.messages.create(
         model="claude-sonnet-4-6",
-        max_tokens=4096,
+        max_tokens=16384,
         temperature=0,
         system=system_prompt,
         tools=[schema],
