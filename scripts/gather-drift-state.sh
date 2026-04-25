@@ -86,6 +86,19 @@ collect_repo_state() {
     fi
   done
 
+  # Documentation files content
+  local docs="{}"
+  for doc in README.md CONTRIBUTING.md docs/conventions.md; do
+    local doc_raw doc_content
+    doc_raw=$(safe_api "" "repos/${repo}/contents/${doc}" --jq '.content')
+    if [[ -n "${doc_raw}" ]]; then
+      doc_content=$(echo "${doc_raw}" | base64 -d 2>/dev/null || true)
+      if [[ -n "${doc_content}" ]]; then
+        docs=$(echo "${docs}" | jq --arg k "${doc}" --arg v "${doc_content}" '. + {($k): $v}')
+      fi
+    fi
+  done
+
   # Issue templates
   local issue_templates
   issue_templates=$(safe_api "[]" "repos/${repo}/contents/.github/ISSUE_TEMPLATE" --jq '[.[].name]')
@@ -153,32 +166,49 @@ collect_repo_state() {
     branch_protection="${bp_data}"
   fi
 
-  # Build repo state object
+  # Build repo state object using temp files to avoid arg-too-long
+  local repo_tmp
+  repo_tmp=$(mktemp -d)
+
+  echo "${file_tree}" > "${repo_tmp}/files.json"
+  echo "${top_dirs}" > "${repo_tmp}/top_dirs.json"
+  echo "${workflows}" > "${repo_tmp}/workflows.json"
+  echo "${docs}" > "${repo_tmp}/docs.json"
+  echo "${issue_templates}" > "${repo_tmp}/issue_templates.json"
+  echo "${labels}" > "${repo_tmp}/labels.json"
+  echo "${settings}" > "${repo_tmp}/settings.json"
+  echo "${pinned_issue}" > "${repo_tmp}/pinned_issue.json"
+  echo "${branch_protection}" > "${repo_tmp}/branch_protection.json"
+
   jq -n \
     --arg repo "${repo}" \
-    --argjson files "${file_tree}" \
-    --argjson top_dirs "${top_dirs}" \
-    --argjson workflows "${workflows}" \
-    --argjson issue_templates "${issue_templates}" \
+    --slurpfile files "${repo_tmp}/files.json" \
+    --slurpfile top_dirs "${repo_tmp}/top_dirs.json" \
+    --slurpfile workflows "${repo_tmp}/workflows.json" \
+    --slurpfile docs "${repo_tmp}/docs.json" \
+    --slurpfile issue_templates "${repo_tmp}/issue_templates.json" \
     --arg pr_template "${pr_template}" \
-    --argjson labels "${labels}" \
-    --argjson settings "${settings}" \
+    --slurpfile labels "${repo_tmp}/labels.json" \
+    --slurpfile settings "${repo_tmp}/settings.json" \
     --arg sops_exists "${sops_exists}" \
-    --argjson pinned_issue "${pinned_issue}" \
-    --argjson branch_protection "${branch_protection}" \
+    --slurpfile pinned_issue "${repo_tmp}/pinned_issue.json" \
+    --slurpfile branch_protection "${repo_tmp}/branch_protection.json" \
     '{
       repo: $repo,
-      files: $files,
-      top_level_dirs: $top_dirs,
-      workflows: $workflows,
-      issue_templates: $issue_templates,
+      files: $files[0],
+      top_level_dirs: $top_dirs[0],
+      workflows: $workflows[0],
+      docs: $docs[0],
+      issue_templates: $issue_templates[0],
       pr_template: ($pr_template == "true"),
-      labels: $labels,
-      settings: $settings,
+      labels: $labels[0],
+      settings: $settings[0],
       has_sops: ($sops_exists == "true"),
-      pinned_issue: $pinned_issue,
-      branch_protection: $branch_protection
+      pinned_issue: $pinned_issue[0],
+      branch_protection: $branch_protection[0]
     }'
+
+  rm -rf "${repo_tmp}"
 }
 
 # --- Main ---
@@ -189,28 +219,35 @@ CONVENTIONS=$(collect_conventions "${KB_REPO}" "${CONVENTIONS_PATH}")
 echo "::notice::Collecting adoption guide" >&2
 ADOPTION=$(collect_adoption_guide)
 
-REPO_STATES="[]"
+TMPDIR=$(mktemp -d)
+trap 'rm -rf "${TMPDIR}"' EXIT
+
+echo "[]" > "${TMPDIR}/repos.json"
 REPO_COUNT=0
 for repo in ${REPOS}; do
   echo "::notice::Collecting state from ${repo}" >&2
-  state=$(collect_repo_state "${repo}")
-  REPO_STATES=$(echo "${REPO_STATES}" | jq --argjson s "${state}" '. + [$s]')
+  collect_repo_state "${repo}" > "${TMPDIR}/repo-state.json"
+  jq --slurpfile s "${TMPDIR}/repo-state.json" '. + $s' "${TMPDIR}/repos.json" > "${TMPDIR}/repos.tmp" && mv "${TMPDIR}/repos.tmp" "${TMPDIR}/repos.json"
   REPO_COUNT=$((REPO_COUNT + 1))
 done
 
 echo "::notice::Gathered state from ${REPO_COUNT} repos" >&2
 
-# Build final output
+# Write conventions and adoption guide to temp files
+echo "${CONVENTIONS}" > "${TMPDIR}/conventions.json"
+echo "${ADOPTION}" > "${TMPDIR}/adoption.txt"
+
+# Build final output using files instead of shell arguments
 jq -n \
   --arg project "${PROJECT_NAME}" \
   --arg collected_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  --argjson conventions "${CONVENTIONS}" \
-  --arg adoption_guide "${ADOPTION}" \
-  --argjson repos "${REPO_STATES}" \
+  --slurpfile conventions "${TMPDIR}/conventions.json" \
+  --rawfile adoption_guide "${TMPDIR}/adoption.txt" \
+  --slurpfile repos "${TMPDIR}/repos.json" \
   '{
     project: $project,
     collected_at: $collected_at,
-    conventions: $conventions,
+    conventions: $conventions[0],
     adoption_guide: $adoption_guide,
-    repos: $repos
+    repos: $repos[0]
   }'
