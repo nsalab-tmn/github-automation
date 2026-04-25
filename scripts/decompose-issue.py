@@ -30,14 +30,13 @@ def main():
     response = client.messages.create(
         model="claude-opus-4-6",
         max_tokens=16384,
-        temperature=1,  # required when extended thinking is enabled
         thinking={
-            "type": "enabled",
+            "type": "adaptive",
             "budget_tokens": 10000,
         },
         system=system_prompt,
         tools=[schema],
-        tool_choice={"type": "tool", "name": "decompose_issue"},
+        tool_choice={"type": "any"},
         messages=[
             {
                 "role": "user",
