@@ -48,6 +48,7 @@ resource "github_organization_ruleset" "this" {
 
       content {
         strict_required_status_checks_policy = lookup(required_status_checks.value, "strict", false)
+        do_not_enforce_on_create             = lookup(required_status_checks.value, "do_not_enforce_on_create", false)
 
         dynamic "required_check" {
           for_each = lookup(required_status_checks.value, "checks", [])
