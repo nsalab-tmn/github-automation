@@ -135,7 +135,8 @@ Reusable GitHub Actions workflows in this repo. Rule-based: IF event THEN action
 
 | Workflow | Trigger | What it does |
 |---|---|---|
-| `scaffold-repo` | Issue form with `repository-request` label | Creates new repos with all org standards |
+| `scaffold-gitops` | Issue form with `gitops-request` label | Creates PR adding gitops repo to Terraform config |
+| `delete-gitops` | Issue form with `gitops-delete` label | Creates PR removing gitops repo from Terraform config |
 
 ### Design principles
 
