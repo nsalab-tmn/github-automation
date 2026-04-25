@@ -1,5 +1,3 @@
 # GitOps repositories created from template-gitops
 # Add entries via issue form (Create GitOps repository) or manually
 gitops_repos: []
-  # - name: cheburnet
-  #   description: "GitOps configuration for the cheburnet project"
