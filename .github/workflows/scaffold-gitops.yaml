@@ -1,0 +1,106 @@
+name: scaffold-gitops
+run-name: "[${{github.run_number}}] Scaffold gitops [${{github.event.issue.title}}]"
+
+on:
+  issues:
+    types: [opened]
+
+concurrency:
+  group: scaffold-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+permissions:
+  issues: write
+  contents: write
+  pull-requests: write
+
+jobs:
+  scaffold:
+    if: contains(github.event.issue.labels.*.name, 'gitops-request')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Parse issue form
+        id: parse
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const body = context.payload.issue.body || '';
+
+            function getField(name) {
+              const regex = new RegExp(`### ${name}\\s*\\n\\s*([\\s\\S]*?)(?=\\n###|$)`, 'i');
+              const match = body.match(regex);
+              return match ? match[1].trim() : '';
+            }
+
+            const fields = {
+              'project-name': { value: getField('Project name'), required: true },
+              'description': { value: getField('Description'), required: true },
+              'justification': { value: getField('Justification'), required: true },
+            };
+
+            for (const [key, { value, required }] of Object.entries(fields)) {
+              if (required && !value) {
+                core.setFailed(`Missing required field: ${key}`);
+                return;
+              }
+              core.setOutput(key, value);
+            }
+
+      - name: Run scaffold script
+        id: scaffold
+        env:
+          ORG: nsalab-tmn
+          PROJECT_NAME: ${{ steps.parse.outputs.project-name }}
+          DESCRIPTION: ${{ steps.parse.outputs.description }}
+          JUSTIFICATION: ${{ steps.parse.outputs.justification }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/scaffold-gitops.sh
+
+      - name: Comment on issue
+        if: success()
+        uses: actions/github-script@v8
+        env:
+          PR_URL: ${{ steps.scaffold.outputs.pr-url }}
+          PROJECT_NAME: ${{ steps.parse.outputs.project-name }}
+        with:
+          script: |
+            const prUrl = process.env.PR_URL;
+            const projectName = process.env.PROJECT_NAME;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: [
+                `### PR created`,
+                ``,
+                `**PR**: ${prUrl}`,
+                `**Repo**: \`nsalab-tmn/${projectName}-gitops\` (created on merge)`,
+                ``,
+                `**What happens next:**`,
+                `1. Terraform plan runs on the PR`,
+                `2. Review and merge the PR`,
+                `3. Terraform apply creates the repo from \`template-gitops\``,
+                `4. This issue closes automatically`,
+                ``,
+                `**After repo is created:**`,
+                `- Add repos to \`terraform/configs/repos.yaml\` via PR`,
+                `- Configure labels in \`terraform/configs/labels.yaml\` via PR`,
+              ].join('\n'),
+            });
+
+      - name: Comment on failure
+        if: failure()
+        uses: actions/github-script@v8
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `### Scaffold failed\n\nCheck the [workflow run](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}) for details.`,
+            });

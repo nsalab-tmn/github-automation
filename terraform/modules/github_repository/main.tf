@@ -19,7 +19,17 @@ resource "github_repository" "this" {
   has_wiki        = var.has_wiki
   has_discussions = var.has_discussions
 
+  dynamic "template" {
+    for_each = var.template != null ? [var.template] : []
+    content {
+      owner                = template.value.owner
+      repository           = template.value.repository
+      include_all_branches = false
+    }
+  }
+
   lifecycle {
     prevent_destroy = true
+    ignore_changes  = [template]
   }
 }
