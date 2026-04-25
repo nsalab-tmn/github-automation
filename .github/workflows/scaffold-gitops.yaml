@@ -35,121 +35,36 @@ jobs:
               return match ? match[1].trim() : '';
             }
 
-            const projectName = getField('Project name');
-            const description = getField('Description');
-            const justification = getField('Justification');
+            const fields = {
+              'project-name': { value: getField('Project name'), required: true },
+              'description': { value: getField('Description'), required: true },
+              'justification': { value: getField('Justification'), required: true },
+            };
 
-            if (!projectName) {
-              core.setFailed('Missing required field: Project name');
-              return;
-            }
-            if (!description) {
-              core.setFailed('Missing required field: Description');
-              return;
-            }
-            if (!justification) {
-              core.setFailed('Missing required field: Justification');
-              return;
+            for (const [key, { value, required }] of Object.entries(fields)) {
+              if (required && !value) {
+                core.setFailed(`Missing required field: ${key}`);
+                return;
+              }
+              core.setOutput(key, value);
             }
 
-            const namePattern = /^[a-z0-9][a-z0-9-]*$/;
-            if (!namePattern.test(projectName)) {
-              core.setFailed(`Invalid project name: ${projectName} (must be lowercase alphanumeric with hyphens)`);
-              return;
-            }
-
-            core.setOutput('project-name', projectName);
-            core.setOutput('description', description);
-            core.setOutput('justification', justification);
-
-      - name: Check if repo already exists
-        id: check
+      - name: Run scaffold script
+        id: scaffold
         env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          REPO_NAME="${{ steps.parse.outputs.project-name }}-gitops"
-          if gh repo view "nsalab-tmn/${REPO_NAME}" &>/dev/null; then
-            echo "::error::Repository nsalab-tmn/${REPO_NAME} already exists"
-            exit 1
-          fi
-
-      - name: Add project to gitops config
-        env:
+          ORG: nsalab-tmn
           PROJECT_NAME: ${{ steps.parse.outputs.project-name }}
           DESCRIPTION: ${{ steps.parse.outputs.description }}
-        run: |
-          CONFIG_FILE="terraform/configs/gitops-projects.yaml"
-
-          # Check if project already in config
-          if grep -q "name: ${PROJECT_NAME}$" "${CONFIG_FILE}"; then
-            echo "::error::Project ${PROJECT_NAME} already exists in ${CONFIG_FILE}"
-            exit 1
-          fi
-
-          # Append entry to config
-          python3 << 'PYEOF'
-          import yaml, os
-
-          config_file = os.environ["CONFIG_FILE"]
-          project_name = os.environ["PROJECT_NAME"]
-          description = os.environ["DESCRIPTION"]
-
-          with open(config_file) as f:
-              config = yaml.safe_load(f)
-
-          if config.get("gitops_repos") is None:
-              config["gitops_repos"] = []
-
-          config["gitops_repos"].append({
-              "name": project_name,
-              "description": description
-          })
-
-          with open(config_file, "w") as f:
-              yaml.dump(config, f, default_flow_style=False, sort_keys=False)
-          PYEOF
-
-      - name: Create PR
-        id: pr
-        env:
-          GH_TOKEN: ${{ github.token }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
-          PROJECT_NAME: ${{ steps.parse.outputs.project-name }}
           JUSTIFICATION: ${{ steps.parse.outputs.justification }}
-        run: |
-          BRANCH="infra/${ISSUE_NUMBER}-add-${PROJECT_NAME}-gitops"
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout -b "${BRANCH}"
-          git add terraform/configs/gitops-projects.yaml
-          git commit -m "Add ${PROJECT_NAME}-gitops to Terraform config
-
-          Closes #${ISSUE_NUMBER}"
-          git push origin "${BRANCH}"
-
-          PR_URL=$(gh pr create \
-            --title "Add gitops repo: ${PROJECT_NAME}-gitops" \
-            --body "$(cat <<EOF
-## Summary
-
-Create \`nsalab-tmn/${PROJECT_NAME}-gitops\` from \`template-gitops\` template.
-
-## Justification
-
-${JUSTIFICATION}
-
-Closes #${ISSUE_NUMBER}
-EOF
-          )")
-
-          echo "pr-url=${PR_URL}" >> "$GITHUB_OUTPUT"
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/scaffold-gitops.sh
 
       - name: Comment on issue
         if: success()
         uses: actions/github-script@v8
         env:
-          PR_URL: ${{ steps.pr.outputs.pr-url }}
+          PR_URL: ${{ steps.scaffold.outputs.pr-url }}
           PROJECT_NAME: ${{ steps.parse.outputs.project-name }}
         with:
           script: |
