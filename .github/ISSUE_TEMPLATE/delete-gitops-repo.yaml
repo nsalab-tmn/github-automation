@@ -1,0 +1,21 @@
+name: Delete GitOps repository
+description: Request deletion of a project GitOps repo
+labels: [gitops-delete]
+body:
+  - type: input
+    id: project-name
+    attributes:
+      label: Project name
+      description: "Will delete nsalab-tmn/<name>-gitops"
+      placeholder: "myproject"
+    validations:
+      required: true
+
+  - type: textarea
+    id: justification
+    attributes:
+      label: Justification
+      description: Why should this GitOps repo be deleted?
+      placeholder: "Project has been decommissioned and all repos have been archived/deleted."
+    validations:
+      required: true
