@@ -12,3 +12,4 @@ projects:
       - nsalab-tmn/cheburnet-monitoring
       - nsalab-tmn/cheburnet-router
       - nsalab-tmn/cheburnet-gitops
+      - nsalab-tmn/cheburnet-intelligence
