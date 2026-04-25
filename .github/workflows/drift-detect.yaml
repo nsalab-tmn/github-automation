@@ -40,8 +40,15 @@ jobs:
           python3 -c "
           import yaml, json
           with open('config/drift-projects.yaml') as f:
-              print(json.dumps(yaml.safe_load(f)['projects']))
+              config = yaml.safe_load(f)
+              print(json.dumps(config['projects']))
           " > projects.json
+          python3 -c "
+          import yaml
+          with open('config/drift-projects.yaml') as f:
+              config = yaml.safe_load(f)
+          print(f\"project_number={config.get('project-number', 6)}\")
+          " >> "$GITHUB_OUTPUT"
           CONFIG_FILE=config/engineering-agent.yaml ./scripts/parse-config.sh >> "$GITHUB_OUTPUT"
 
       - name: Gather and analyze each project
@@ -113,6 +120,7 @@ jobs:
         if: always() && hashFiles('all-findings.json') != ''
         env:
           DRY_RUN: ${{ inputs.dry-run || 'false' }}
+          PROJECT_NUMBER: ${{ steps.config.outputs.project_number }}
         uses: actions/github-script@v8
         with:
           github-token: ${{ steps.app-token.outputs.token }}
@@ -137,7 +145,7 @@ jobs:
             // Fetch project board IDs once (for adding new issues to board)
             let projectId, statusFieldId, backlogOptionId;
             try {
-              const projectNumber = parseInt(fs.readFileSync('project-number.txt', 'utf8').trim()) || 6;
+              const projectNumber = parseInt(process.env.PROJECT_NUMBER) || 6;
               const pData = await github.graphql(`
                 query($org: String!, $number: Int!) {
                   organization(login: $org) {
