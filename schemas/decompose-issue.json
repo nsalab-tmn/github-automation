@@ -1,0 +1,50 @@
+{
+  "name": "decompose_issue",
+  "description": "Assess whether an issue needs decomposition into smaller sub-issues and produce phased work items, each implementable in a single pull request",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "needs_decomposition": {
+        "type": "boolean",
+        "description": "True if the issue is too complex for a single PR and should be broken into sub-issues"
+      },
+      "reason": {
+        "type": "string",
+        "description": "Why decomposition is or is not needed — reference specific scope indicators from the issue"
+      },
+      "sub_issues": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "phase": {
+              "type": "integer",
+              "description": "Execution order (1-based). Phase 1 must have no dependencies."
+            },
+            "title": {
+              "type": "string",
+              "description": "Concise, actionable sub-issue title"
+            },
+            "body": {
+              "type": "string",
+              "description": "Full issue body: Context section, Acceptance criteria (verifiable from repo state), Key files (paths from file tree), and any relevant conventions. Must be self-contained — the implementing agent will not see the parent issue."
+            },
+            "labels": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Labels to apply from the repo's existing label set"
+            },
+            "depends_on_phases": {
+              "type": "array",
+              "items": { "type": "integer" },
+              "description": "Phase numbers that must complete before this phase can start. Empty array means no dependencies."
+            }
+          },
+          "required": ["phase", "title", "body", "labels", "depends_on_phases"]
+        },
+        "description": "Ordered list of sub-issues. Empty when needs_decomposition is false."
+      }
+    },
+    "required": ["needs_decomposition", "reason", "sub_issues"]
+  }
+}

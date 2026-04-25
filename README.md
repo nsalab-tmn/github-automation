@@ -70,6 +70,7 @@ github-automation/
 | `scaffold-gitops` | Create gitops repos via issue form + Terraform | Active |
 | `delete-gitops` | Delete gitops repos via issue form + Terraform | Active |
 | `drift-detect` | Convention drift detection (Layer 3, AI-assisted) | Active |
+| `planning-agent` | AI planning agent — decomposes complex issues into sub-issues (Layer 3) | Active |
 | `engineering-agent` | AI engineering agent — picks issues, creates PRs (Layer 3) | Active |
 | `review-agent` | AI review agent — reviews PRs, posts structured reviews (Layer 3) | Active |
 

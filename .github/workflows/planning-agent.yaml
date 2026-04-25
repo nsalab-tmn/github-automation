@@ -1,0 +1,140 @@
+name: planning-agent
+run-name: "[${{github.run_number}}] Planning agent [${{github.event_name}}]"
+
+on:
+  workflow_dispatch:
+    inputs:
+      issue-url:
+        description: 'Issue URL to decompose (e.g., https://github.com/nsalab-tmn/repo/issues/7)'
+        required: true
+        type: string
+      dry-run:
+        description: 'Dry run — gather + decide only, skip creating sub-issues'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: planning-agent
+  cancel-in-progress: false
+
+jobs:
+  planning-agent:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout github-automation
+        uses: actions/checkout@v5
+
+      - name: Generate app token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ secrets.LIBRARIAN_CLIENT_ID }}
+          private-key: ${{ secrets.LIBRARIAN_PRIVATE_KEY }}
+          owner: nsalab-tmn
+
+      - name: Install dependencies
+        run: pip install anthropic pyyaml
+
+      - name: Parse config
+        id: config
+        env:
+          CONFIG_FILE: config/planning-agent.yaml
+        run: ./scripts/parse-config.sh >> "$GITHUB_OUTPUT"
+
+      - name: Parse issue URL
+        id: parse
+        run: |
+          URL="${{ inputs.issue-url }}"
+          # Extract owner/repo and issue number from URL
+          # Format: https://github.com/OWNER/REPO/issues/NUMBER
+          REPO=$(echo "$URL" | grep -oP 'github\.com/\K[^/]+/[^/]+')
+          NUMBER=$(echo "$URL" | grep -oP 'issues/\K\d+$')
+          if [[ -z "$REPO" || -z "$NUMBER" ]]; then
+            echo "::error::Could not parse issue URL: $URL"
+            exit 1
+          fi
+          echo "issue_repo=$REPO" >> "$GITHUB_OUTPUT"
+          echo "issue_number=$NUMBER" >> "$GITHUB_OUTPUT"
+          echo "::notice::Target: ${REPO}#${NUMBER}"
+
+      - name: Gather context
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          ISSUE_REPO: ${{ steps.parse.outputs.issue_repo }}
+          ISSUE_NUMBER: ${{ steps.parse.outputs.issue_number }}
+          PROJECTS_JSON: ${{ steps.config.outputs.projects }}
+          TARGET_REPO: ${{ steps.parse.outputs.issue_repo }}
+        run: |
+          KB_INFO=$(./scripts/resolve-kb.sh)
+          export KB_REPO=$(echo "$KB_INFO" | awk '{print $1}')
+          export KB_CONV_PATH=$(echo "$KB_INFO" | awk '{print $2}')
+          ./scripts/gather-issue-context.sh > issue-context.json
+
+      - name: Decompose issue
+        id: decompose
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          python3 ./scripts/decompose-issue.py \
+            issue-context.json \
+            prompts/planning-brief.md \
+            schemas/decompose-issue.json \
+            > decomposition.json
+
+          NEEDS=$(jq -r '.needs_decomposition' decomposition.json)
+          REASON=$(jq -r '.reason' decomposition.json)
+          SUB_COUNT=$(jq '.sub_issues | length' decomposition.json)
+
+          echo "needs_decomposition=$NEEDS" >> "$GITHUB_OUTPUT"
+          echo "sub_count=$SUB_COUNT" >> "$GITHUB_OUTPUT"
+          echo "::notice::Needs decomposition: ${NEEDS} (${SUB_COUNT} sub-issues)"
+          echo "::notice::Reason: ${REASON}"
+
+      - name: Handle no decomposition needed
+        if: steps.decompose.outputs.needs_decomposition == 'false'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          ISSUE_REPO: ${{ steps.parse.outputs.issue_repo }}
+          ISSUE_NUMBER: ${{ steps.parse.outputs.issue_number }}
+        run: |
+          REASON=$(jq -r '.reason' decomposition.json)
+          gh api "repos/${ISSUE_REPO}/issues/${ISSUE_NUMBER}/comments" \
+            -f body="<!-- agent:decomposition -->
+          **Planning agent**: this issue does not need decomposition.
+
+          **Reason:** ${REASON}
+
+          ---
+          *Assessed by [planning agent](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})*
+          <!-- /agent:decomposition -->" >/dev/null
+          echo "::notice::Issue does not need decomposition — posted comment"
+
+      - name: Create sub-issues
+        if: steps.decompose.outputs.needs_decomposition == 'true' && inputs.dry-run != true
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          ISSUE_REPO: ${{ steps.parse.outputs.issue_repo }}
+          ISSUE_NUMBER: ${{ steps.parse.outputs.issue_number }}
+          DECOMPOSITION: decomposition.json
+          PROJECT_NUMBER: ${{ steps.config.outputs.project_number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: ./scripts/create-sub-issues.sh
+
+      - name: Session summary
+        if: always()
+        env:
+          AGENT_NAME: Planning Agent
+          DRY_RUN: ${{ inputs.dry-run || 'false' }}
+          SELECTED: 'true'
+          SUMMARY_ITEM: "${{ steps.parse.outputs.issue_repo }}#${{ steps.parse.outputs.issue_number }}"
+          SUMMARY_EXTRA: ""
+          RESULT_FILE: decomposition.json
+          RESULT_FIELDS: >-
+            "**Needs decomposition:** \(.needs_decomposition)\n**Reason:** \(.reason)\n**Sub-issues:** \(.sub_issues | length)"
+        run: ./scripts/session-summary.sh
