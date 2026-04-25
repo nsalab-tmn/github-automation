@@ -86,18 +86,55 @@ collect_repo_state() {
     fi
   done
 
-  # Documentation files content
-  local docs="{}"
+  # Documentation compliance signals (targeted checks, not full content)
+  local has_template_markers="false"
+  local links_to_kb="false"
+  local has_project_name="false"
+  local doc_files_with_markers="[]"
+
+  # Derive expected KB repo from project config
+  local expected_kb
+  expected_kb=$(echo "${PROJECT_CONFIG}" | jq -r '.["knowledge-base"] // ""')
+
   for doc in README.md CONTRIBUTING.md docs/conventions.md; do
     local doc_raw doc_content
     doc_raw=$(safe_api "" "repos/${repo}/contents/${doc}" --jq '.content')
     if [[ -n "${doc_raw}" ]]; then
       doc_content=$(echo "${doc_raw}" | base64 -d 2>/dev/null || true)
       if [[ -n "${doc_content}" ]]; then
-        docs=$(echo "${docs}" | jq --arg k "${doc}" --arg v "${doc_content}" '. + {($k): $v}')
+        # Check for template/agent markers
+        if echo "${doc_content}" | grep -qE '<!-- (TEMPLATE|AGENT):'; then
+          has_template_markers="true"
+          doc_files_with_markers=$(echo "${doc_files_with_markers}" | jq --arg f "${doc}" '. + [$f]')
+        fi
+        # Check for knowledge base link
+        if [[ -n "${expected_kb}" ]] && echo "${doc_content}" | grep -q "${expected_kb}"; then
+          links_to_kb="true"
+        fi
+        # Check if README has a project-specific name (not just generic "Project")
+        if [[ "${doc}" == "README.md" ]]; then
+          local first_heading
+          first_heading=$(echo "${doc_content}" | head -5 | grep -oP '^#\s+\K.*' || echo "")
+          if [[ -n "${first_heading}" ]] && ! echo "${first_heading}" | grep -qiE '^project (gitops|repository|repo)$'; then
+            has_project_name="true"
+          fi
+        fi
       fi
     fi
   done
+
+  local docs
+  docs=$(jq -n \
+    --arg has_template_markers "${has_template_markers}" \
+    --arg links_to_kb "${links_to_kb}" \
+    --arg has_project_name "${has_project_name}" \
+    --argjson files_with_markers "${doc_files_with_markers}" \
+    '{
+      has_template_markers: ($has_template_markers == "true"),
+      links_to_kb: ($links_to_kb == "true"),
+      has_project_name: ($has_project_name == "true"),
+      files_with_markers: $files_with_markers
+    }')
 
   # Issue templates
   local issue_templates
