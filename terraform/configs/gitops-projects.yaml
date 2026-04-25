@@ -1,3 +1,4 @@
-# GitOps repositories created from template-gitops
-# Add entries via issue form (Create GitOps repository) or manually
-gitops_repos: []
+gitops_repos:
+- name: cheburnet
+  description: "GitOps configuration for the cheburnet project \u2014 Terraform-managed\
+    \ repos, labels, and settings"
