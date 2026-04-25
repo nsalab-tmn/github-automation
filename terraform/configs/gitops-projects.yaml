@@ -1,4 +1,1 @@
-gitops_repos:
-- name: cheburnet
-  description: "GitOps configuration for the cheburnet project \u2014 Terraform-managed\
-    \ repos, labels, and settings"
+gitops_repos: []
