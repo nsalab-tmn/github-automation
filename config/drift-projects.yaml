@@ -9,3 +9,4 @@ projects:
       - nsalab-tmn/cheburnet-mtproxy
       - nsalab-tmn/cheburnet-monitoring
       - nsalab-tmn/cheburnet-router
+      - nsalab-tmn/cheburnet-gitops
