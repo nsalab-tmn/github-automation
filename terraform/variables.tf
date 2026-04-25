@@ -8,3 +8,9 @@ variable "github_owner" {
   type        = string
   description = "GitHub organization name"
 }
+
+variable "self_repo_name" {
+  type        = string
+  default     = ""
+  description = "Name of this repository (set automatically by CI)"
+}
