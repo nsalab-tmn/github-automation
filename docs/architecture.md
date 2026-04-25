@@ -72,12 +72,16 @@ Organization settings that require version control and audit trails are managed 
 | Labels | `github_issue_label` (reusable module) | Per-project `configs/labels.yaml` |
 
 **Two-tier architecture:**
-- **Org-wide** (`github-automation/terraform/`): rulesets, reusable modules. Public, project-agnostic.
-- **Per-project** (`[project]-gitops/terraform/`): repos, labels, descriptions. Private, project-specific.
+- **Org-wide** (`github-automation/terraform/`): org rulesets, gitops project repos, labels for this repo. Public, project-agnostic.
+- **Per-project** (`[project]-gitops/terraform/`): project repos, labels, descriptions. Private, project-specific.
 
-New project repos are created from the `template-gitops` template repository. State is stored in Azure Blob Storage.
+**Template repos:**
+- `template-gitops` — template for gitops repos (TF configs, housekeeping, scaffold/delete forms, bootstrap pipeline)
+- `template-generic` — template for project repos (skeleton docs with agent prompts, housekeeping)
 
-CI: `terraform plan` on PR (posts plan as comment) → `terraform apply` on merge.
+**Self-service lifecycle:** issue form → workflow creates PR → human reviews → merge → TF apply creates/deletes repo. Post-apply bootstrap creates pinned context issues for newly provisioned repos. See [docs/repo-provisioning.md](repo-provisioning.md) for details.
+
+State is stored in Azure Blob Storage. CI: `terraform plan` on PR (posts plan as comment) → `terraform apply` on merge.
 
 ## Layer 1: GitHub Built-ins
 
