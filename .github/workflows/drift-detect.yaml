@@ -169,7 +169,7 @@ jobs:
             for (const projectFindings of allFindings) {
               const project = projectFindings.project;
 
-              for (const finding of projectFindings.findings) {
+              for (const finding of (projectFindings.findings || [])) {
                 // Normalize repo: Claude sometimes outputs short names
                 let repoFull = finding.repo;
                 if (!repoFull.includes('/')) {
