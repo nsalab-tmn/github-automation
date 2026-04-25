@@ -1,3 +1,0 @@
-creation_rules:
-  - path_regex: ansible/inventory/group_vars/.*\.sops\.yml$
-    age: __SOPS_AGE_PUBLIC_KEY__
