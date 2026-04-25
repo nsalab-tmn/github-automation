@@ -65,6 +65,7 @@ This groups reusable workflows visually in the Actions sidebar, separate from ca
 | `scaffold-gitops` | `issues` (with `gitops-request` label) | Issue form fields | Creates PR adding gitops repo to Terraform config |
 | `delete-gitops` | `issues` (with `gitops-delete` label) | Issue form fields | Creates PR removing gitops repo from Terraform config |
 | `drift-detect` | `schedule`, `workflow_dispatch` | `dry-run` | Compares repos against conventions, creates compliance issues |
+| `planning-agent` | `workflow_dispatch` | `issue-url`, `dry-run` | Decomposes complex issues into mechanic-sized sub-issues |
 | `engineering-agent` | `workflow_dispatch` | `issue-url`, `dry-run` | Picks issues from board, implements fixes, creates PRs |
 | `review-agent` | `schedule`, `workflow_dispatch` | `pr-url`, `dry-run` | Reviews AI-generated PRs, posts structured reviews |
 

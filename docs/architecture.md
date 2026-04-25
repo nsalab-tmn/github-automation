@@ -190,6 +190,7 @@ Result: ~100% structural determinism (same JSON shape every run), ~95% content d
 | Workflow | Schedule | What it does |
 |---|---|---|
 | `drift-detect` | Weekly + manual | Compares project repos against conventions, creates compliance issues |
+| `planning-agent` | Manual | Decomposes complex issues into mechanic-sized sub-issues |
 | `engineering-agent` | Manual (crawl phase) | Picks compliance issues from board, implements fixes, creates PRs |
 | `review-agent` | Weekdays + manual | Reviews AI-generated PRs, posts structured reviews |
 
@@ -228,6 +229,32 @@ Issues are created as `nsalab-librarian[bot]` (GitHub App) with `compliance` lab
 | None of the above | Create issue + add to project board |
 
 New issues are automatically added to the project board with Backlog status (compensates for GitHub's suppression of `issues.opened` events from App tokens).
+
+### Planning agent
+
+Decomposes complex issues into mechanic-sized sub-issues. Manual trigger only.
+
+```
+ GATHER (free)              DECIDE (expensive, precise)   EXECUTE (deterministic)
+ Deterministic scripts      Claude API, Opus              Create sub-issues via API
+ harvest issue + repo       extended thinking             Link to parent issue
+ context                    (10K token budget)            Board auto-adds them
+ ┌──────────────────┐      ┌──────────────────┐       ┌──────────────────┐
+ │ Issue body+comments│     │ Analyze scope and │       │ gh issue create  │
+ │ Repo docs + tree  │─────>│ dependency graph  │──────>│ addSubIssue      │
+ │ KB conventions    │      │ Break into phases │       │ mutation         │
+ │ Pinned issue      │      │ w/ acceptance     │       │ Post summary     │
+ │ Recent PRs/commits│      │ criteria + deps   │       │ comment          │
+ └──────────────────┘      └──────────────────┘       └──────────────────┘
+```
+
+**Why Opus (not Sonnet)**: decomposition is high-stakes, low-frequency. Quality directly determines whether the mechanic succeeds or wastes multiple attempts. Extended thinking enables deep reasoning about dependency graphs and scope boundaries before producing structured output.
+
+**Trigger**: `workflow_dispatch` with `issue-url` input. No auto-selection — human decides which issues need decomposition.
+
+**Output**: GitHub sub-issues linked to the parent via `addSubIssue` GraphQL mutation. The project board's "Auto-add sub-issues" rule picks them up automatically. A summary comment on the parent issue tracks all created sub-issues.
+
+Each sub-issue body is self-contained — it includes all context the mechanic needs (acceptance criteria, key files, conventions, dependencies) because the mechanic compiles its brief from the issue body alone.
 
 ### Engineering agent
 
@@ -295,23 +322,27 @@ Reviews AI-generated PRs against their linked issues. Posts structured GitHub PR
 
 ### Feedback loop
 
-All three Layer 3 workflows form a closed loop:
+All four Layer 3 workflows form a closed loop:
 
 ```
-drift-detect              engineering-agent           review-agent
+drift-detect              planning-agent            engineering-agent           review-agent
   finds drift ── creates ──> issue (Backlog)
                                   │
-                             picks issue
-                             implements fix
+human creates ──────────────> complex issue
                                   │
-                             PR created ──────────> reviews PR
-                             (In review)                │
-                                  │               ┌─ approve ──> human merges ──> Done
-  recognizes fix                  │               │
-  (suppresses)  <─────────────────┤               └─ request_changes
-                                  │                       │
-                                  └── picks up again <────┘
-                                      (In progress)
+                             decomposes into ──> sub-issues (Backlog)
+                             sub-issues               │
+                                                 picks issue
+                                                 implements fix
+                                                      │
+                                                 PR created ──────────> reviews PR
+                                                 (In review)                │
+                                                      │               ┌─ approve ──> human merges ──> Done
+  recognizes fix                                      │               │
+  (suppresses)  <─────────────────────────────────────┤               └─ request_changes
+                                                      │                       │
+                                                      └── picks up again <────┘
+                                                          (In progress)
 ```
 
 **The full cycle**: drift-detect finds problems → engineering agent fixes them → review agent validates the fix → human merges. Drift-detect suppresses findings that already have open PRs or were recently fixed.
@@ -341,6 +372,7 @@ The only exceptions are operational side effects of the agent's workflow:
 - Posting issue comments (append-only, used for attempt tracking)
 - Updating project board status (state machine transitions)
 - Assigning issues (concurrency signals)
+- Creating sub-issues (planning agent — structured decomposition of complex issues)
 
 These are operational metadata, not content changes, and are logged in the workflow run.
 
@@ -364,6 +396,7 @@ Workflow-specific scripts follow the Gather → Decide → Execute pattern:
 | Workflow | Gather | Decide | Execute |
 |---|---|---|---|
 | drift-detect | `gather-drift-state.sh`, `gather-compliance-state.sh` | `drift-detect.py` | inline (actions/github-script) |
+| planning-agent | `gather-issue-context.sh` | `decompose-issue.py` | `create-sub-issues.sh` |
 | engineering-agent | `select-issue.sh`, `check-blocked.sh`, `gather-issue-context.sh` | `compile-brief.py` | Claude Code CLI |
 | review-agent | `select-pr.sh`, `gather-pr-context.sh` | `review-pr.py` | `post-review.sh` |
 
@@ -401,6 +434,7 @@ Vertical distribution: project repos follow project knowledge base, which follow
 | Project board Layer 0 (built-in automations) | Internal | `github-project-automation[bot]` |
 | Project board Layer 2 (auto-project, project-sync) | GitHub App token | `nsalab-automation[bot]` |
 | Layer 3 drift detection (issue creation, board-add) | GitHub App token | `nsalab-librarian[bot]` |
+| Layer 3 planning agent (sub-issue creation) | GitHub App token | `nsalab-librarian[bot]` |
 | Layer 3 engineering agent (checkout, push, PR creation) | GitHub App token | `nsalab-mechanic[bot]` |
 | Layer 3 review agent (post reviews, board updates) | GitHub App token | `nsalab-beekeeper[bot]` |
 | Claude API calls (all Layer 3 Decide phases) | `ANTHROPIC_API_KEY` | N/A |
