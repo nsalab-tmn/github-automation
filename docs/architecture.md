@@ -71,15 +71,19 @@ Organization settings that require version control and audit trails are managed 
 | Repo settings | `github_repository` (reusable module) | Per-project `configs/repos.yaml` |
 | Labels | `github_issue_label` (reusable module) | Per-project `configs/labels.yaml` |
 
-**Two-tier architecture:**
+**Two-tier architecture** (see [docs/repo-provisioning.md](repo-provisioning.md) for full details):
 - **Org-wide** (`github-automation/terraform/`): org rulesets, gitops project repos, labels for this repo. Public, project-agnostic.
 - **Per-project** (`[project]-gitops/terraform/`): project repos, labels, descriptions. Private, project-specific.
 
+Why two tiers instead of one: privacy (project configs stay in private repos), TF state isolation (one project's failure doesn't block others), and agent blast radius (mechanic scoped to project, not org).
+
 **Template repos:**
 - `template-gitops` — template for gitops repos (TF configs, housekeeping, scaffold/delete forms, bootstrap pipeline)
-- `template-generic` — template for project repos (skeleton docs with agent prompts, housekeeping)
+- `template-generic` — template for project repos (skeleton docs with hidden agent prompts, housekeeping)
 
-**Self-service lifecycle:** issue form → workflow creates PR → human reviews → merge → TF apply creates/deletes repo. Post-apply bootstrap creates pinned context issues for newly provisioned repos. See [docs/repo-provisioning.md](repo-provisioning.md) for details.
+**Self-service lifecycle:** issue form → workflow creates PR → human reviews → merge → TF apply creates/deletes repo. Post-apply bootstrap creates pinned context issues for newly provisioned repos.
+
+**Known limitation:** template changes don't propagate to existing repos. Planned mitigation: thin templates with reusable logic in github-automation (nsalab-tmn/template-gitops#14).
 
 State is stored in Azure Blob Storage. CI: `terraform plan` on PR (posts plan as comment) → `terraform apply` on merge.
 

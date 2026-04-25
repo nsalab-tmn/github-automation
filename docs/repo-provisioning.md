@@ -125,8 +125,8 @@ Modules are referenced via `source = "github.com/nsalab-tmn/github-automation//t
 
 ```yaml
 gitops_repos:
-  - name: cheburnet
-    description: "GitOps configuration for the cheburnet project"
+  - name: myproject
+    description: "GitOps configuration for the myproject project"
 ```
 
 ### repos.yaml (in project-gitops repos)
@@ -150,6 +150,24 @@ repo_specific_labels:
     - { name: api, color: "5319e7", description: "API changes" }
 ```
 
+## Why two-tier architecture
+
+The provisioning system uses two tiers: org-wide (`github-automation`) and per-project (`[project]-gitops`). A simpler single-tier approach (all repos in one config) would work for small orgs but doesn't scale. The deciding factors:
+
+**Privacy.** `github-automation` is a public repo — project-specific configs (repo names, descriptions, labels) would be visible to anyone. Project gitops repos are private, keeping project boundaries private.
+
+**TF state isolation.** Each gitops repo has its own Terraform state in Azure Blob Storage. A provider crash or failed apply in project A doesn't block project B. A single state file managing all repos across projects is a single point of failure.
+
+**Agent blast radius.** When the mechanic agent working on a project repo needs a new repo, it creates an issue in that project's gitops repo — scoped to that project. If it went to `github-automation` instead, the agent would need cross-project write access and could accidentally affect other projects' configs.
+
+### Template propagation limitation
+
+Template repos are applied at creation time only. Changes to `template-gitops` do NOT propagate to existing gitops repos. This means:
+- Bug fixes in template workflows require manual sync to each existing gitops repo
+- New features (like self-labeling) need to be added to each repo individually
+
+**Mitigation strategy** (planned, see nsalab-tmn/template-gitops#14): move complex logic (scaffold/delete scripts, bootstrap) to reusable workflows in `github-automation`, consumed via `@main` references. The template becomes thinner — only thin caller workflows and TF configs. Fixes propagate automatically to all consumers.
+
 ## Known gotchas
 
 - **Org rulesets block initial commits**: Template repos work because `do_not_enforce_on_create=true` on `require-pr-validation` and `nsalab-doorman` is a bypass actor on both rulesets.
@@ -157,3 +175,6 @@ repo_specific_labels:
 - **Doorman needs `contents:read`**: Template generation requires cloning the template repo's content. The doorman App must have this permission.
 - **GITHUB_TOKEN won't trigger workflows**: Scaffold/delete workflows use `nsalab-automation` App token so the created PR triggers housekeeping and PR Validation.
 - **Pinned label must exist**: Bootstrap script creates issues with `pinned` label. The label is provisioned by Terraform from `labels.yaml` — runs in the same apply as repo creation.
+- **Complex inline YAML breaks workflow registration**: GitHub's Actions YAML parser can fail to register workflows with complex inline scripts (Python heredocs, multi-line shell with special characters). Always extract logic to external shell scripts in `scripts/` — the workflow should only contain issue form parsing (github-script) and comments.
+- **Template propagation**: Changes to `template-gitops` or `template-generic` only affect NEW repos created after the change. Existing repos need manual sync. See nsalab-tmn/template-gitops#14 for the planned mitigation.
+- **Self-labeling requires first TF apply**: Newly created gitops repos don't have `repo-request`/`repo-delete` labels until their first `terraform apply` runs. The bootstrap job (from github-automation) creates the `pinned` label as a workaround, but scaffold/delete labels come from self-labeling.
