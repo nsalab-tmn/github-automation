@@ -1,0 +1,110 @@
+name: delete-gitops
+run-name: "[${{github.run_number}}] Delete gitops [${{github.event.issue.title}}]"
+
+on:
+  issues:
+    types: [opened]
+
+concurrency:
+  group: delete-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+permissions:
+  issues: write
+  contents: write
+  pull-requests: write
+
+jobs:
+  delete:
+    if: contains(github.event.issue.labels.*.name, 'gitops-delete')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Generate app token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: nsalab-tmn
+
+      - name: Parse issue form
+        id: parse
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const body = context.payload.issue.body || '';
+
+            function getField(name) {
+              const regex = new RegExp(`### ${name}\\s*\\n\\s*([\\s\\S]*?)(?=\\n###|$)`, 'i');
+              const match = body.match(regex);
+              return match ? match[1].trim() : '';
+            }
+
+            const fields = {
+              'project-name': { value: getField('Project name'), required: true },
+              'justification': { value: getField('Justification'), required: true },
+            };
+
+            for (const [key, { value, required }] of Object.entries(fields)) {
+              if (required && !value) {
+                core.setFailed(`Missing required field: ${key}`);
+                return;
+              }
+              core.setOutput(key, value);
+            }
+
+      - name: Run delete script
+        id: delete
+        env:
+          ORG: nsalab-tmn
+          PROJECT_NAME: ${{ steps.parse.outputs.project-name }}
+          JUSTIFICATION: ${{ steps.parse.outputs.justification }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: ./scripts/delete-gitops.sh
+
+      - name: Comment on issue
+        if: success()
+        uses: actions/github-script@v8
+        env:
+          PR_URL: ${{ steps.delete.outputs.pr-url }}
+          PROJECT_NAME: ${{ steps.parse.outputs.project-name }}
+        with:
+          script: |
+            const prUrl = process.env.PR_URL;
+            const projectName = process.env.PROJECT_NAME;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: [
+                `### PR created`,
+                ``,
+                `**PR**: ${prUrl}`,
+                `**Repo**: \`nsalab-tmn/${projectName}-gitops\` (deleted on merge)`,
+                ``,
+                `**What happens next:**`,
+                `1. Terraform plan runs on the PR — will show the repo being destroyed`,
+                `2. Review and merge the PR`,
+                `3. Terraform apply deletes the repo`,
+                `4. This issue closes automatically`,
+                ``,
+                `**WARNING**: Merging the PR will permanently delete the repository.`,
+              ].join('\n'),
+            });
+
+      - name: Comment on failure
+        if: failure()
+        uses: actions/github-script@v8
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `### Delete request failed\n\nCheck the [workflow run](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}) for details.`,
+            });
