@@ -96,6 +96,16 @@ jobs:
           echo "::notice::Needs decomposition: ${NEEDS} (${SUB_COUNT} sub-issues)"
           echo "::notice::Reason: ${REASON}"
 
+      - name: Show decomposition (dry run)
+        if: steps.decompose.outputs.needs_decomposition == 'true' && inputs.dry-run == true
+        run: |
+          echo "## Decomposition preview" >> "$GITHUB_STEP_SUMMARY"
+          echo '```json' >> "$GITHUB_STEP_SUMMARY"
+          cat decomposition.json >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          # Also print sub-issue titles to log
+          jq -r '.sub_issues[] | "Phase \(.phase): \(.title)"' decomposition.json
+
       - name: Handle no decomposition needed
         if: steps.decompose.outputs.needs_decomposition == 'false'
         env:
