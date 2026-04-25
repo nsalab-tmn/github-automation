@@ -32,7 +32,6 @@ def main():
         max_tokens=16384,
         thinking={
             "type": "adaptive",
-            "budget_tokens": 10000,
         },
         system=system_prompt,
         tools=[schema],
