@@ -10,6 +10,7 @@ Technical reference for github-automation workflows.
 | [CONTRIBUTING.md](../CONTRIBUTING.md) | About to make changes |
 | [docs/adoption.md](adoption.md) | Adding workflows to your repo |
 | [docs/architecture.md](architecture.md) | Understanding the 4-layer enforcement architecture |
+| [docs/repo-provisioning.md](repo-provisioning.md) | Self-service repo creation/deletion via Terraform |
 | This file | Need technical details on workflows |
 
 ## Workflow naming
@@ -61,7 +62,8 @@ This groups reusable workflows visually in the Actions sidebar, separate from ca
 | `reusable-pinned-sync` | `issues: [closed]`, `pull_request: [closed]`, `schedule` | `pinned-label` | Auto-updates pinned context issue sections marked with HTML comment markers |
 | `reusable-terraform-plan` | `workflow_call` | `working-directory`, `terraform-version` | Terraform fmt, init, validate, plan, post plan as PR comment |
 | `reusable-terraform-apply` | `workflow_call` | `working-directory`, `terraform-version` | Terraform init, apply |
-| `scaffold-repo` | `issues` (with `repository-request` label) | Issue form fields | Creates a new repo with org standards via issue form |
+| `scaffold-gitops` | `issues` (with `gitops-request` label) | Issue form fields | Creates PR adding gitops repo to Terraform config |
+| `delete-gitops` | `issues` (with `gitops-delete` label) | Issue form fields | Creates PR removing gitops repo from Terraform config |
 | `drift-detect` | `schedule`, `workflow_dispatch` | `dry-run` | Compares repos against conventions, creates compliance issues |
 | `engineering-agent` | `workflow_dispatch` | `issue-url`, `dry-run` | Picks issues from board, implements fixes, creates PRs |
 | `review-agent` | `schedule`, `workflow_dispatch` | `pr-url`, `dry-run` | Reviews AI-generated PRs, posts structured reviews |
@@ -165,23 +167,32 @@ Each Layer 3 workflow has its own GitHub App identity:
 | `nsalab-librarian[bot]` | `drift-detect` | Finds convention drift, creates compliance issues |
 | `nsalab-mechanic[bot]` | `engineering-agent` | Implements fixes, creates PRs |
 | `nsalab-beekeeper[bot]` | `review-agent` | Reviews PRs, posts APPROVE/REQUEST_CHANGES |
-| `nsalab-doorman[bot]` | `terraform-plan/apply` | Manages org rulesets and repo settings via Terraform |
-| `nsalab-automation[bot]` | Layer 2 workflows | Housekeeping (auto-assign, project-sync, etc.) |
+| `nsalab-doorman[bot]` | `terraform-plan/apply` | Manages org rulesets and repo settings via Terraform. Bypass actor on org rulesets for template bootstrapping |
+| `nsalab-automation[bot]` | Layer 2 workflows, scaffold/delete | Housekeeping, scaffold/delete workflows (triggers downstream workflows, project board access) |
 
 ## Terraform
 
 Organization settings are managed via Terraform in the `terraform/` directory:
 
 - `configs/rulesets.yaml` — org-wide branch protection rulesets
-- `modules/github_repository/` — reusable module for repo settings
+- `configs/gitops-projects.yaml` — gitops repos created from `template-gitops`
+- `configs/labels.yaml` — labels for this repo
+- `modules/github_repository/` — reusable module for repo settings (supports template creation)
 - `modules/github_issue_labels/` — reusable module for standard label sets
 - `modules/github_organization_ruleset/` — reusable module for org rulesets
 
 CI workflows: `terraform-plan.yaml` (on PR) and `terraform-apply.yaml` (on merge).
 Both are thin callers to `reusable-terraform-plan.yaml` and `reusable-terraform-apply.yaml`.
+The reusable workflows accept an optional `backend-key` input for dynamic state key derivation.
 
-Project-specific repos (`[project]-gitops`) reference these modules and reusable workflows via `@main`.
-New project repos are created from the `template-gitops` template repository.
+### Template repos
+
+| Template | Purpose | Used by |
+|----------|---------|---------|
+| `template-gitops` | GitOps repos with TF configs, housekeeping, scaffold/delete forms | github-automation creates `[project]-gitops` repos |
+| `template-generic` | Project repos with skeleton docs (agent prompts), housekeeping | `[project]-gitops` repos create project repos |
+
+See [docs/repo-provisioning.md](repo-provisioning.md) for the full self-service lifecycle.
 
 ## Actions versions
 
@@ -202,5 +213,5 @@ Pinned to major versions for stability:
 - **project-sync + Layer 1 hybrid**: `project-sync` is designed to work alongside Layer 1 built-in project workflows. Layer 1 handles common transitions (PR linked → In Review, item closed → Done, item reopened → Backlog) with clean single-event timelines. `project-sync` handles only transitions Layer 1 cannot: draft PRs, ready_for_review, review re-requests after changes, and PR closed without merge. Both must be active for full lifecycle coverage.
 - **`pull_request_review` event**: Only fires on `submitted`, not on dismissal. The `changes_requested` state moves the linked issue back to In Progress. The `approved` state is a no-op (stays In Review until merged).
 - **Bot events don't trigger workflows**: GitHub suppresses events from App tokens. The review agent must directly update board status on REQUEST_CHANGES (project-sync won't fire). Drift-detect must manually add new issues to the project board (auto-project won't fire).
-- **Org rulesets block initial commits**: New repos can't receive direct pushes to main. Use template repos (`template-gitops`) or `auto_init` for bootstrapping. Bypass actors may be temporarily added for one-time bootstrap.
+- **Org rulesets block initial commits**: New repos can't receive direct pushes to main. Use template repos (`template-gitops`, `template-generic`) for bootstrapping. `nsalab-doorman` is a permanent bypass actor on both rulesets, and `do_not_enforce_on_create=true` on `require-pr-validation` allows status checks to be skipped for the initial push.
 - **GitHub Terraform provider v6.12.0**: Has nil pointer crash in `github_organization_ruleset` with App tokens. Pin to v6.11.1. Modules must declare `required_providers` with `source = "integrations/github"` to avoid legacy `hashicorp/github` namespace resolution.

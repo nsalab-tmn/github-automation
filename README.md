@@ -39,11 +39,10 @@ github-automation/
 │   └── conventions.md           Technical reference, workflow catalog
 ├── prompts/                     Claude API system prompts
 ├── schemas/                     Claude API tool schemas
-├── scripts/                     Shared scripts for agent workflows
-├── templates/                   Repo scaffolding templates
+├── scripts/                     Shared scripts for agent + scaffold workflows
 ├── terraform/
-│   ├── configs/                 Org-wide Terraform configs (rulesets)
-│   └── modules/                 Reusable Terraform modules
+│   ├── configs/                 Org-wide Terraform configs (rulesets, labels, gitops projects)
+│   └── modules/                 Reusable Terraform modules (repo, labels, rulesets)
 ├── README.md                    This file
 └── CONTRIBUTING.md              How to work in this repo
 ```
@@ -68,7 +67,8 @@ github-automation/
 | `reusable-pinned-sync` | Auto-update pinned context issue from repo state | Active |
 | `reusable-terraform-plan` | Terraform fmt, validate, plan with PR comment | Active |
 | `reusable-terraform-apply` | Terraform apply on merge | Active |
-| `scaffold-repo` | Create new repos via issue form with org standards | Active |
+| `scaffold-gitops` | Create gitops repos via issue form + Terraform | Active |
+| `delete-gitops` | Delete gitops repos via issue form + Terraform | Active |
 | `drift-detect` | Convention drift detection (Layer 3, AI-assisted) | Active |
 | `engineering-agent` | AI engineering agent — picks issues, creates PRs (Layer 3) | Active |
 | `review-agent` | AI review agent — reviews PRs, posts structured reviews (Layer 3) | Active |
@@ -79,5 +79,10 @@ See [docs/conventions.md](docs/conventions.md) for the full catalog with inputs/
 
 Organization settings managed as code in `terraform/`:
 - Org-wide rulesets (require PR, squash merge only, branch naming)
+- GitOps project repos (created from `template-gitops` via issue form)
+- Labels for this repo
 - Reusable modules for repos, labels, and rulesets
-- Project-specific config lives in `[project]-gitops` repos (created from `template-gitops`)
+
+Project-specific config lives in `[project]-gitops` repos (created from `template-gitops`). Project repos are created from `template-generic`.
+
+See [docs/repo-provisioning.md](docs/repo-provisioning.md) for the full self-service lifecycle.
