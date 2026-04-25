@@ -22,6 +22,10 @@ rulesets:
   - name: require-pr-validation
     target: branch
     enforcement: active
+    bypass_actors:
+      - actor_id: 3493789  # nsalab-doorman (repo bootstrapping from templates)
+        actor_type: Integration
+        bypass_mode: always
     conditions:
       ref_name:
         include: ["~DEFAULT_BRANCH"]
