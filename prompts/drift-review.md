@@ -59,3 +59,13 @@ to check. Evaluate it on two axes:
    For org-wide adoption guide findings, use `adoption-guide.md`.
 10. Produce at most ONE finding per `type` + `convention_file` combination per repo.
     Merge multiple issues from the same convention file into one finding.
+11. `repo-documentation.md` applies to ALL repos regardless of type. Every repo needs
+    project-specific documentation — not just structural compliance (files exist) but
+    content compliance (docs reference the specific project, link to the project's
+    knowledge base, describe project-specific patterns). If documentation files contain
+    generic template content (e.g., "Project GitOps" instead of the actual project name,
+    no links to the knowledge base, placeholder sections, HTML comments like
+    `<!-- AGENT: ... -->` or `<!-- TEMPLATE: ... -->`), flag as `gap`.
+12. When the `docs` field is provided in repo state, READ the actual content of README.md,
+    CONTRIBUTING.md, and docs/conventions.md. Check whether the content is project-specific
+    or still generic template text. File existence alone is NOT sufficient for compliance.
