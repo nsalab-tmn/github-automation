@@ -35,7 +35,7 @@ def main():
         },
         system=system_prompt,
         tools=[schema],
-        tool_choice={"type": "any"},
+        tool_choice={"type": "auto"},
         messages=[
             {
                 "role": "user",
