@@ -143,11 +143,14 @@ jobs:
             }
 
             // Fetch project board IDs per board number (for adding new issues to board)
-            const globalProjectNumber = parseInt(process.env.PROJECT_NUMBER) || 6;
             const boardDataByNumber = new Map();
-            const boardNumbers = new Set([globalProjectNumber]);
+            const boardNumbers = new Set();
             for (const p of projects) {
-              if (p['project-number']) boardNumbers.add(p['project-number']);
+              if (!p['project-number']) {
+                core.warning(`Project "${p.name}" has no project-number — its issues will not be added to any board`);
+                continue;
+              }
+              boardNumbers.add(p['project-number']);
             }
             for (const num of boardNumbers) {
               try {
@@ -212,8 +215,11 @@ jobs:
                 }
                 const [owner, repo] = repoFull.split('/');
                 const repoProject = projects.find(p => p.repos && p.repos.includes(repoFull));
-                const boardNumber = repoProject?.['project-number'] || globalProjectNumber;
-                const { projectId, statusFieldId, backlogOptionId, priorityFieldId, priorityOptions, sizeFieldId, sizeOptions } = boardDataByNumber.get(boardNumber) || {};
+                const boardNumber = repoProject?.['project-number'];
+                if (!boardNumber) {
+                  core.warning(`No project-number for ${repoFull} — skipping board operations`);
+                }
+                const { projectId, statusFieldId, backlogOptionId, priorityFieldId, priorityOptions, sizeFieldId, sizeOptions } = (boardNumber && boardDataByNumber.get(boardNumber)) || {};
                 const convFile = finding.convention_file.toLowerCase();
                 const key = (finding.finding_key || convFile).toLowerCase().replace(/[^a-z0-9-]/g, '-');
                 const findingId = `${finding.type}:${convFile}:${key}`;
