@@ -50,4 +50,10 @@ for key in ['backlog', 'blocked', 'in-progress', 'in-review', 'done']:
 # Projects
 projects = json.dumps(config.get('projects', []))
 print(f'projects={projects}')
+
+# Allowed repos — flattened from all projects
+all_repos = []
+for proj in config.get('projects', []):
+    all_repos.extend(proj.get('repos', []))
+print(f\"allowed_repos={json.dumps(sorted(set(all_repos)))}\")
 "

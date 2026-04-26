@@ -59,6 +59,7 @@ jobs:
           ELIGIBLE_STATUSES: ${{ steps.config.outputs.eligible_statuses }}
           REQUIRE_PR_LABELS: ${{ steps.config.outputs.require_pr_labels }}
           EXCLUDED_PR_LABELS: ${{ steps.config.outputs.excluded_pr_labels }}
+          ALLOWED_REPOS: ${{ steps.config.outputs.allowed_repos }}
           MAX_REVIEW_ATTEMPTS: ${{ steps.config.outputs.max_review_attempts }}
           MANUAL_PR_URL: ${{ inputs.pr-url }}
         run: |

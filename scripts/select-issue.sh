@@ -17,6 +17,7 @@ set -euo pipefail
 # Optional:
 #   PROJECT_NUMBER    — single board number (fallback if PROJECT_NUMBERS not set)
 #   REQUIRE_LABELS    — JSON array of labels ALL candidates must have
+#   ALLOWED_REPOS     — JSON array of repo names (org/repo) to consider; empty = all
 
 ORG="${ORG:?ORG env var required}"
 PROJECT_NUMBERS="${PROJECT_NUMBERS:-${PROJECT_NUMBER:-}}"
@@ -27,6 +28,7 @@ fi
 EXCLUDED_LABELS="${EXCLUDED_LABELS:-'["pinned","needs-triage","stale"]'}"
 ELIGIBLE_STATUSES="${ELIGIBLE_STATUSES:-'["Backlog","In progress"]'}"
 REQUIRE_LABELS="${REQUIRE_LABELS:-'[]'}"
+ALLOWED_REPOS="${ALLOWED_REPOS:-'[]'}"
 MAX_ATTEMPTS="${MAX_ATTEMPTS:-3}"
 
 ALL_ITEMS_FILE=$(mktemp)
@@ -112,7 +114,8 @@ echo "::notice::Total board items across all projects: ${TOTAL}" >&2
 jq \
   --argjson excluded "$EXCLUDED_LABELS" \
   --argjson eligible "$ELIGIBLE_STATUSES" \
-  --argjson required "$REQUIRE_LABELS" '
+  --argjson required "$REQUIRE_LABELS" \
+  --argjson allowed "$ALLOWED_REPOS" '
 
   def priority_rank:
     if . == "P1" then 0 elif . == "P2" then 1 elif . == "P3" then 2 else 99 end;
@@ -126,6 +129,7 @@ jq \
       and .content.number != null
       and .content.state == "OPEN"
       and ((.status // {}).name // "" as $s | $eligible | index($s) != null)
+      and ($allowed | length == 0 or (.content.repository.nameWithOwner as $r | $allowed | index($r) != null))
       and ([.content.labels.nodes[].name] as $labels |
         ($excluded | all(. as $e | $labels | index($e) == null))
         and ($required | all(. as $r | $labels | index($r) != null))

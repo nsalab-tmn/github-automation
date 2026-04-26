@@ -18,6 +18,7 @@ set -euo pipefail
 # Optional:
 #   PROJECT_NUMBER       — single board number (fallback if PROJECT_NUMBERS not set)
 #   MANUAL_PR_URL        — specific PR URL to review (bypasses selection)
+#   ALLOWED_REPOS        — JSON array of repo names (org/repo) to consider; empty = all
 #
 # Output: JSON with selected PR details to stdout, empty if none eligible
 
@@ -45,6 +46,7 @@ fi
 ELIGIBLE_STATUSES="${ELIGIBLE_STATUSES:-'["In review"]'}"
 REQUIRE_PR_LABELS="${REQUIRE_PR_LABELS:-'["ai-generated"]'}"
 EXCLUDED_PR_LABELS="${EXCLUDED_PR_LABELS:-'["needs-triage","stale"]'}"
+ALLOWED_REPOS="${ALLOWED_REPOS:-'[]'}"
 MAX_REVIEW_ATTEMPTS="${MAX_REVIEW_ATTEMPTS:-3}"
 
 ALL_ITEMS_FILE=$(mktemp)
@@ -121,12 +123,14 @@ TOTAL=$(jq 'length' "$ALL_ITEMS_FILE")
 echo "::notice::Total board items across all projects: ${TOTAL}" >&2
 
 # Filter to issues in eligible statuses (these are the issues linked to PRs)
-jq --argjson eligible "$ELIGIBLE_STATUSES" '
+jq --argjson eligible "$ELIGIBLE_STATUSES" \
+   --argjson allowed "$ALLOWED_REPOS" '
   map(select(
     .content != null
     and .content.number != null
     and .content.state == "OPEN"
     and ((.status // {}).name // "" as $s | $eligible | index($s) != null)
+    and ($allowed | length == 0 or (.content.repository.nameWithOwner as $r | $allowed | index($r) != null))
   ))
   | sort_by([
     (if (.priority // {}).name == "P1" then 0

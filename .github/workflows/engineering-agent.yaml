@@ -70,6 +70,7 @@ jobs:
           EXCLUDED_LABELS: ${{ steps.config.outputs.excluded_labels }}
           ELIGIBLE_STATUSES: ${{ steps.config.outputs.eligible_statuses }}
           REQUIRE_LABELS: ${{ steps.config.outputs.require_labels }}
+          ALLOWED_REPOS: ${{ steps.config.outputs.allowed_repos }}
           MAX_ATTEMPTS: ${{ steps.config.outputs.max_attempts }}
           MANUAL_ISSUE_URL: ${{ inputs.issue-url }}
         run: |
