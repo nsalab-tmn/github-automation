@@ -57,6 +57,12 @@ variable "has_discussions" {
   default = false
 }
 
+variable "is_template" {
+  type        = bool
+  default     = false
+  description = "Whether this repository is itself a template repository"
+}
+
 variable "template" {
   type = object({
     owner      = string
