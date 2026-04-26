@@ -29,7 +29,8 @@ if [[ -z "${TELEGRAM_MESSAGE:-}" ]]; then
   PR_URL="https://github.com/${PR_REPO}/pull/${PR_NUMBER}"
   ISSUE_URL="https://github.com/${PR_REPO}/issues/${ISSUE_NUMBER}"
 
-  TELEGRAM_MESSAGE="<b>PR approved — ready to merge</b>
+  if [[ "${AUTO_MERGED:-}" == "true" ]]; then
+    TELEGRAM_MESSAGE="<b>✅ PR auto-merged</b>
 
 <b>PR:</b> <a href=\"${PR_URL}\">${PR_REPO}#${PR_NUMBER}</a>
 <b>Issue:</b> <a href=\"${ISSUE_URL}\">#${ISSUE_NUMBER}</a>
@@ -38,6 +39,17 @@ if [[ -z "${TELEGRAM_MESSAGE:-}" ]]; then
 ${SUMMARY}
 
 <a href=\"${RUN_URL:-}\">View review run</a>"
+  else
+    TELEGRAM_MESSAGE="<b>PR approved — ready to merge</b>
+
+<b>PR:</b> <a href=\"${PR_URL}\">${PR_REPO}#${PR_NUMBER}</a>
+<b>Issue:</b> <a href=\"${ISSUE_URL}\">#${ISSUE_NUMBER}</a>
+<b>Confidence:</b> ${CONFIDENCE}
+
+${SUMMARY}
+
+<a href=\"${RUN_URL:-}\">View review run</a>"
+  fi
 fi
 
 # Convert markdown backticks to HTML <code> tags for Telegram

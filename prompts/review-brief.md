@@ -93,8 +93,11 @@ Set `decision: "comment"` when:
 4. Do not flag things that Layer 2 CI already validates (branch naming, PR
    structure, linked issue). Focus on content correctness.
 5. Keep summary under 2 sentences.
-6. `auto_merge_eligible` requires: decision=approve AND confidence=high AND
-   no blocking issues found.
+6. `auto_merge_eligible` requires ALL of: decision=approve AND confidence=high
+   AND no blocking issues found AND only docs-only files changed (only
+   `docs/**`, `*.md`, or `prompts/*.md` — no `.github/workflows/`, `scripts/`,
+   `terraform/`, or config files) AND PR has `documentation` label. Set
+   `false` if any workflow, script, terraform, or config file is modified.
 7. If CI checks are failing, missing, or have not run at all, set decision to
    "request_changes" (not "approve") and note the failures — content review
    is secondary to passing CI. See "CI status validation" above.
