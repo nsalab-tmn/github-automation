@@ -73,6 +73,7 @@ jobs:
           echo "issue_number=$(jq -r '.issue_number' selected-pr.json)" >> "$GITHUB_OUTPUT"
 
       - name: Gather PR context
+        id: gather
         if: steps.select.outputs.selected == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -84,6 +85,10 @@ jobs:
           KB_INFO=$(./scripts/resolve-kb.sh)
           export KB_REPO=$(echo "$KB_INFO" | awk '{print $1}')
           export KB_CONV_PATH=$(echo "$KB_INFO" | awk '{print $2}')
+          PROJ_NUM=$(echo "$KB_INFO" | awk '{print $3}')
+          if [[ -n "$PROJ_NUM" ]]; then
+            echo "project_number=$PROJ_NUM" >> "$GITHUB_OUTPUT"
+          fi
           ./scripts/gather-pr-context.sh > pr-context.json
 
       - name: Compile review
@@ -104,7 +109,7 @@ jobs:
           PR_REPO: ${{ steps.select.outputs.pr_repo }}
           PR_NUMBER: ${{ steps.select.outputs.pr_number }}
           ISSUE_NUMBER: ${{ steps.select.outputs.issue_number }}
-          PROJECT_NUMBER: ${{ steps.config.outputs.project_number }}
+          PROJECT_NUMBER: ${{ steps.gather.outputs.project_number || steps.config.outputs.project_number }}
           STATUS_IN_PROGRESS: ${{ steps.config.outputs.status_in_progress }}
           REVIEW_FILE: review.json
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

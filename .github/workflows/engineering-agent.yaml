@@ -99,7 +99,7 @@ jobs:
           ISSUE_REPO: ${{ steps.select.outputs.issue_repo }}
           ISSUE_NUMBER: ${{ steps.select.outputs.issue_number }}
           ISSUE_ID: ${{ steps.select.outputs.issue_id }}
-          PROJECT_NUMBER: ${{ steps.config.outputs.project_number }}
+          PROJECT_NUMBER: ${{ steps.gather.outputs.project_number || steps.config.outputs.project_number }}
           TARGET_STATUS: ${{ steps.config.outputs.status_in_progress }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           RUN_NUMBER: ${{ github.run_number }}
@@ -107,6 +107,7 @@ jobs:
 
       # Step 3: Gather context
       - name: Gather issue context
+        id: gather
         if: steps.select.outputs.selected == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -118,6 +119,10 @@ jobs:
           KB_INFO=$(./scripts/resolve-kb.sh)
           export KB_REPO=$(echo "$KB_INFO" | awk '{print $1}')
           export KB_CONV_PATH=$(echo "$KB_INFO" | awk '{print $2}')
+          PROJ_NUM=$(echo "$KB_INFO" | awk '{print $3}')
+          if [[ -n "$PROJ_NUM" ]]; then
+            echo "project_number=$PROJ_NUM" >> "$GITHUB_OUTPUT"
+          fi
           ./scripts/gather-issue-context.sh > issue-context.json
 
       # Step 4: Compile brief (Decide phase)
@@ -156,7 +161,7 @@ jobs:
           ISSUE_REPO: ${{ steps.select.outputs.issue_repo }}
           ISSUE_NUMBER: ${{ steps.select.outputs.issue_number }}
           ISSUE_ID: ${{ steps.select.outputs.issue_id }}
-          PROJECT_NUMBER: ${{ steps.config.outputs.project_number }}
+          PROJECT_NUMBER: ${{ steps.gather.outputs.project_number || steps.config.outputs.project_number }}
           TARGET_STATUS: ${{ steps.config.outputs.status_blocked }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           RUN_NUMBER: ${{ github.run_number }}
@@ -275,7 +280,7 @@ jobs:
           ISSUE_REPO: ${{ steps.select.outputs.issue_repo }}
           ISSUE_NUMBER: ${{ steps.select.outputs.issue_number }}
           ISSUE_ID: ${{ steps.select.outputs.issue_id }}
-          PROJECT_NUMBER: ${{ steps.config.outputs.project_number }}
+          PROJECT_NUMBER: ${{ steps.gather.outputs.project_number || steps.config.outputs.project_number }}
           TARGET_STATUS: ${{ steps.config.outputs.status_blocked }}
         run: |
           ./scripts/mark-needs-triage.sh

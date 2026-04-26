@@ -35,3 +35,12 @@ projects:
       - nsalab-tmn/cheburnet-mtproxy
       - nsalab-tmn/cheburnet-monitoring
       - nsalab-tmn/cheburnet-router
+
+  - name: github-maintenance
+    knowledge-base: nsalab-tmn/github-automation
+    conventions-path: docs
+    project-number: 7
+    repos:
+      - nsalab-tmn/github-automation
+      - nsalab-tmn/template-gitops
+      - nsalab-tmn/template-generic

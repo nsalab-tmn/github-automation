@@ -64,6 +64,7 @@ jobs:
           echo "::notice::Target: ${REPO}#${NUMBER}"
 
       - name: Gather context
+        id: gather
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           ISSUE_REPO: ${{ steps.parse.outputs.issue_repo }}
@@ -74,6 +75,10 @@ jobs:
           KB_INFO=$(./scripts/resolve-kb.sh)
           export KB_REPO=$(echo "$KB_INFO" | awk '{print $1}')
           export KB_CONV_PATH=$(echo "$KB_INFO" | awk '{print $2}')
+          PROJ_NUM=$(echo "$KB_INFO" | awk '{print $3}')
+          if [[ -n "$PROJ_NUM" ]]; then
+            echo "project_number=$PROJ_NUM" >> "$GITHUB_OUTPUT"
+          fi
           ./scripts/gather-issue-context.sh > issue-context.json
 
       - name: Decompose issue
@@ -142,7 +147,7 @@ jobs:
           ISSUE_REPO: ${{ steps.parse.outputs.issue_repo }}
           ISSUE_NUMBER: ${{ steps.parse.outputs.issue_number }}
           DECOMPOSITION: decomposition.json
-          PROJECT_NUMBER: ${{ steps.config.outputs.project_number }}
+          PROJECT_NUMBER: ${{ steps.gather.outputs.project_number || steps.config.outputs.project_number }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: ./scripts/create-sub-issues.sh
 
