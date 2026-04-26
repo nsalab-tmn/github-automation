@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# select-pr.sh — Select an AI-generated PR to review from the project board
+# select-pr.sh — Select an AI-generated PR to review across all project boards
 #
 # If MANUAL_PR_URL is set, fetches that PR directly (skips board selection).
 # Otherwise finds issues in "In review" status with qualifying open PRs.
 #
 # Required environment variables:
 #   GH_TOKEN             — token with project and issue access
-#   PROJECT_NUMBER       — GitHub Projects V2 project number
+#   PROJECT_NUMBERS      — space-separated list of GitHub Projects V2 numbers
 #   ORG                  — GitHub organization name
 #   ELIGIBLE_STATUSES    — JSON array of eligible board statuses
 #   REQUIRE_PR_LABELS    — JSON array of labels the PR must have
@@ -16,12 +16,13 @@ set -euo pipefail
 #   MAX_REVIEW_ATTEMPTS  — max review-agent attempts before skipping
 #
 # Optional:
+#   PROJECT_NUMBER       — single board number (fallback if PROJECT_NUMBERS not set)
 #   MANUAL_PR_URL        — specific PR URL to review (bypasses selection)
+#   ALLOWED_REPOS        — JSON array of repo names (org/repo) to consider; empty = all
 #
 # Output: JSON with selected PR details to stdout, empty if none eligible
 
 ORG="${ORG:?ORG env var required}"
-PROJECT_NUMBER="${PROJECT_NUMBER:?PROJECT_NUMBER env var required}"
 
 # --- Manual PR URL override ---
 if [[ -n "${MANUAL_PR_URL:-}" ]]; then
@@ -36,81 +37,100 @@ if [[ -n "${MANUAL_PR_URL:-}" ]]; then
   }' 2>/dev/null || { echo "::error::Could not fetch PR from URL: ${MANUAL_PR_URL}" >&2; exit 1; }
   exit 0
 fi
+
+PROJECT_NUMBERS="${PROJECT_NUMBERS:-${PROJECT_NUMBER:-}}"
+if [[ -z "$PROJECT_NUMBERS" ]]; then
+  echo "::error::Either PROJECT_NUMBERS or PROJECT_NUMBER must be set" >&2
+  exit 1
+fi
 ELIGIBLE_STATUSES="${ELIGIBLE_STATUSES:-'["In review"]'}"
 REQUIRE_PR_LABELS="${REQUIRE_PR_LABELS:-'["ai-generated"]'}"
 EXCLUDED_PR_LABELS="${EXCLUDED_PR_LABELS:-'["needs-triage","stale"]'}"
+ALLOWED_REPOS="${ALLOWED_REPOS:-'[]'}"
 MAX_REVIEW_ATTEMPTS="${MAX_REVIEW_ATTEMPTS:-3}"
 
-echo "::notice::Selecting PR to review from project #${PROJECT_NUMBER}" >&2
-
-# Paginate through all board items (file-based to avoid arg-list-too-long)
-ITEMS_FILE=$(mktemp)
+ALL_ITEMS_FILE=$(mktemp)
+echo "[]" > "$ALL_ITEMS_FILE"
 CANDIDATES_FILE=$(mktemp)
-trap 'rm -f "$ITEMS_FILE" "$CANDIDATES_FILE"' EXIT
-echo "[]" > "$ITEMS_FILE"
-HAS_NEXT="true"
-CURSOR=""
+trap 'rm -f "$ALL_ITEMS_FILE" "$CANDIDATES_FILE"' EXIT
 
-while [[ "$HAS_NEXT" == "true" ]]; do
-  if [[ -z "$CURSOR" ]]; then
-    CURSOR_ARG=""
-  else
-    CURSOR_ARG=", after: \"${CURSOR}\""
-  fi
+for PROJ_NUM in $PROJECT_NUMBERS; do
+  echo "::notice::Fetching items from project #${PROJ_NUM}" >&2
 
-  PAGE_FILE=$(mktemp)
-  gh api graphql -f query="
-    query(\$org: String!, \$number: Int!) {
-      organization(login: \$org) {
-        projectV2(number: \$number) {
-          items(first: 100${CURSOR_ARG}) {
-            pageInfo { hasNextPage endCursor }
-            nodes {
-              id
-              status: fieldValueByName(name: \"Status\") {
-                ... on ProjectV2ItemFieldSingleSelectValue { name }
-              }
-              priority: fieldValueByName(name: \"Priority\") {
-                ... on ProjectV2ItemFieldSingleSelectValue { name }
-              }
-              content {
-                ... on Issue {
-                  id
-                  number
-                  title
-                  state
-                  createdAt
-                  labels(first: 20) { nodes { name } }
-                  repository { nameWithOwner }
+  ITEMS_FILE=$(mktemp)
+  echo "[]" > "$ITEMS_FILE"
+  HAS_NEXT="true"
+  CURSOR=""
+
+  while [[ "$HAS_NEXT" == "true" ]]; do
+    if [[ -z "$CURSOR" ]]; then
+      CURSOR_ARG=""
+    else
+      CURSOR_ARG=", after: \"${CURSOR}\""
+    fi
+
+    PAGE_FILE=$(mktemp)
+    gh api graphql -f query="
+      query(\$org: String!, \$number: Int!) {
+        organization(login: \$org) {
+          projectV2(number: \$number) {
+            items(first: 100${CURSOR_ARG}) {
+              pageInfo { hasNextPage endCursor }
+              nodes {
+                id
+                status: fieldValueByName(name: \"Status\") {
+                  ... on ProjectV2ItemFieldSingleSelectValue { name }
+                }
+                priority: fieldValueByName(name: \"Priority\") {
+                  ... on ProjectV2ItemFieldSingleSelectValue { name }
+                }
+                content {
+                  ... on Issue {
+                    id
+                    number
+                    title
+                    state
+                    createdAt
+                    labels(first: 20) { nodes { name } }
+                    repository { nameWithOwner }
+                  }
                 }
               }
             }
           }
         }
       }
-    }
-  " -f org="$ORG" -F number="$PROJECT_NUMBER" > "$PAGE_FILE"
+    " -f org="$ORG" -F number="$PROJ_NUM" > "$PAGE_FILE"
 
-  jq '.data.organization.projectV2.items.nodes' "$PAGE_FILE" > "${ITEMS_FILE}.nodes"
-  jq --slurpfile n "${ITEMS_FILE}.nodes" '. + $n[0]' "$ITEMS_FILE" > "${ITEMS_FILE}.tmp" && mv "${ITEMS_FILE}.tmp" "$ITEMS_FILE"
-  HAS_NEXT=$(jq -r '.data.organization.projectV2.items.pageInfo.hasNextPage' "$PAGE_FILE")
-  CURSOR=$(jq -r '.data.organization.projectV2.items.pageInfo.endCursor' "$PAGE_FILE")
-  rm -f "$PAGE_FILE" "${ITEMS_FILE}.nodes"
+    jq '.data.organization.projectV2.items.nodes' "$PAGE_FILE" > "${ITEMS_FILE}.nodes"
+    jq --slurpfile n "${ITEMS_FILE}.nodes" '. + $n[0]' "$ITEMS_FILE" > "${ITEMS_FILE}.tmp" && mv "${ITEMS_FILE}.tmp" "$ITEMS_FILE"
+    HAS_NEXT=$(jq -r '.data.organization.projectV2.items.pageInfo.hasNextPage' "$PAGE_FILE")
+    CURSOR=$(jq -r '.data.organization.projectV2.items.pageInfo.endCursor' "$PAGE_FILE")
+    rm -f "$PAGE_FILE" "${ITEMS_FILE}.nodes"
 
-  COUNT=$(jq 'length' "$ITEMS_FILE")
-  echo "::notice::  Fetched ${COUNT} items so far (hasNextPage: ${HAS_NEXT})" >&2
+    COUNT=$(jq 'length' "$ITEMS_FILE")
+    echo "::notice::  Fetched ${COUNT} items so far from #${PROJ_NUM} (hasNextPage: ${HAS_NEXT})" >&2
+  done
+
+  # Tag items with source project number and merge into ALL_ITEMS_FILE
+  TAGGED_FILE=$(mktemp)
+  jq --argjson pn "$PROJ_NUM" 'map(. + {_project_number: $pn})' "$ITEMS_FILE" > "$TAGGED_FILE"
+  jq --slurpfile tagged "$TAGGED_FILE" '. + $tagged[0]' "$ALL_ITEMS_FILE" > "${ALL_ITEMS_FILE}.tmp" && mv "${ALL_ITEMS_FILE}.tmp" "$ALL_ITEMS_FILE"
+  rm -f "$ITEMS_FILE" "$TAGGED_FILE"
 done
 
-TOTAL=$(jq 'length' "$ITEMS_FILE")
-echo "::notice::Total board items: ${TOTAL}" >&2
+TOTAL=$(jq 'length' "$ALL_ITEMS_FILE")
+echo "::notice::Total board items across all projects: ${TOTAL}" >&2
 
 # Filter to issues in eligible statuses (these are the issues linked to PRs)
-jq --argjson eligible "$ELIGIBLE_STATUSES" '
+jq --argjson eligible "$ELIGIBLE_STATUSES" \
+   --argjson allowed "$ALLOWED_REPOS" '
   map(select(
     .content != null
     and .content.number != null
     and .content.state == "OPEN"
     and ((.status // {}).name // "" as $s | $eligible | index($s) != null)
+    and ($allowed | length == 0 or (.content.repository.nameWithOwner as $r | $allowed | index($r) != null))
   ))
   | sort_by([
     (if (.priority // {}).name == "P1" then 0
@@ -126,9 +146,10 @@ jq --argjson eligible "$ELIGIBLE_STATUSES" '
       issue_repo: .content.repository.nameWithOwner,
       issue_labels: [.content.labels.nodes[].name],
       priority: ((.priority // {}).name // ""),
-      created_at: .content.createdAt
+      created_at: .content.createdAt,
+      project_number: ._project_number
     }]
-' "$ITEMS_FILE" > "$CANDIDATES_FILE"
+' "$ALL_ITEMS_FILE" > "$CANDIDATES_FILE"
 
 CANDIDATE_COUNT=$(jq 'length' "$CANDIDATES_FILE")
 echo "::notice::${CANDIDATE_COUNT} issue(s) in review status" >&2
@@ -167,10 +188,6 @@ for i in $(seq 0 $((CANDIDATE_COUNT - 1))); do
     PR_LABELS=$(echo "$PR" | jq '[.labels[].name]')
 
     # Check required labels
-    HAS_REQUIRED=$(echo "$PR_LABELS" | jq --argjson req "$REQUIRE_PR_LABELS" \
-      '$req | all(. as $r | $ARGS.positional[0] | index($r) != null)' --args -- "$PR_LABELS" 2>/dev/null || echo "false")
-
-    # Simpler check
     HAS_REQUIRED="true"
     for label in $(echo "$REQUIRE_PR_LABELS" | jq -r '.[]'); do
       if ! echo "$PR_LABELS" | jq -e "index(\"$label\")" >/dev/null 2>&1; then
@@ -210,9 +227,6 @@ for i in $(seq 0 $((CANDIDATE_COUNT - 1))); do
   PR_NUM=$(echo "$FOUND_PR" | jq -r '.number')
 
   # Check review attempt count
-  REVIEW_ATTEMPTS=$(gh api "repos/${ISSUE_REPO}/pulls/${PR_NUM}/comments" \
-    --jq 'length' 2>/dev/null || echo "0")
-  # Actually check for review-agent markers in PR reviews
   REVIEW_ATTEMPTS=$(gh api "repos/${ISSUE_REPO}/pulls/${PR_NUM}/reviews" \
     --jq '[.[] | select(.body | test("<!-- review-agent -->"))] | length' 2>/dev/null || echo "0")
 
@@ -225,13 +239,11 @@ for i in $(seq 0 $((CANDIDATE_COUNT - 1))); do
   HEAD_SHA=$(echo "$FOUND_PR" | jq -r '.headRefOid')
   CI_FAILING="false"
   if [[ -n "$HEAD_SHA" && "$HEAD_SHA" != "null" ]]; then
-    # Check combined status
     STATUS=$(gh api "repos/${ISSUE_REPO}/commits/${HEAD_SHA}/status" --jq '.state' 2>/dev/null || echo "pending")
     if [[ "$STATUS" == "failure" || "$STATUS" == "error" ]]; then
       CI_FAILING="true"
     fi
 
-    # Also check check-runs
     CHECK_CONCLUSION=$(gh api "repos/${ISSUE_REPO}/commits/${HEAD_SHA}/check-runs" \
       --jq '[.check_runs[] | select(.conclusion == "failure")] | length' 2>/dev/null || echo "0")
     if [[ "$CHECK_CONCLUSION" -gt 0 ]]; then

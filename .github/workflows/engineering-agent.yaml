@@ -55,7 +55,7 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           ORG: nsalab-tmn
-          PROJECT_NUMBER: ${{ steps.config.outputs.project_number }}
+          PROJECT_NUMBERS: ${{ steps.config.outputs.project_numbers }}
           STATUS_BLOCKED: ${{ steps.config.outputs.status_blocked }}
           STATUS_BACKLOG: ${{ steps.config.outputs.status_backlog }}
         run: ./scripts/check-blocked.sh
@@ -66,10 +66,11 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           ORG: nsalab-tmn
-          PROJECT_NUMBER: ${{ steps.config.outputs.project_number }}
+          PROJECT_NUMBERS: ${{ steps.config.outputs.project_numbers }}
           EXCLUDED_LABELS: ${{ steps.config.outputs.excluded_labels }}
           ELIGIBLE_STATUSES: ${{ steps.config.outputs.eligible_statuses }}
           REQUIRE_LABELS: ${{ steps.config.outputs.require_labels }}
+          ALLOWED_REPOS: ${{ steps.config.outputs.allowed_repos }}
           MAX_ATTEMPTS: ${{ steps.config.outputs.max_attempts }}
           MANUAL_ISSUE_URL: ${{ inputs.issue-url }}
         run: |
@@ -92,6 +93,7 @@ jobs:
           echo "issue_number=$(jq -r '.issue_number' selected-issue.json)" >> "$GITHUB_OUTPUT"
           echo "issue_repo=$(jq -r '.repo' selected-issue.json)" >> "$GITHUB_OUTPUT"
           echo "issue_id=$(jq -r '.issue_id' selected-issue.json)" >> "$GITHUB_OUTPUT"
+          echo "project_number=$(jq -r '.project_number // empty' selected-issue.json)" >> "$GITHUB_OUTPUT"
 
       # Step 2: Claim issue (skipped in dry-run)
       - name: Claim issue
@@ -101,7 +103,7 @@ jobs:
           ISSUE_REPO: ${{ steps.select.outputs.issue_repo }}
           ISSUE_NUMBER: ${{ steps.select.outputs.issue_number }}
           ISSUE_ID: ${{ steps.select.outputs.issue_id }}
-          PROJECT_NUMBER: ${{ steps.gather.outputs.project_number || steps.config.outputs.project_number }}
+          PROJECT_NUMBER: ${{ steps.select.outputs.project_number || steps.config.outputs.project_number }}
           TARGET_STATUS: ${{ steps.config.outputs.status_in_progress }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           RUN_NUMBER: ${{ github.run_number }}
@@ -171,7 +173,7 @@ jobs:
           ISSUE_REPO: ${{ steps.select.outputs.issue_repo }}
           ISSUE_NUMBER: ${{ steps.select.outputs.issue_number }}
           ISSUE_ID: ${{ steps.select.outputs.issue_id }}
-          PROJECT_NUMBER: ${{ steps.gather.outputs.project_number || steps.config.outputs.project_number }}
+          PROJECT_NUMBER: ${{ steps.gather.outputs.project_number || steps.select.outputs.project_number || steps.config.outputs.project_number }}
           TARGET_STATUS: ${{ steps.config.outputs.status_blocked }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           RUN_NUMBER: ${{ github.run_number }}
@@ -378,7 +380,7 @@ jobs:
           ISSUE_REPO: ${{ steps.select.outputs.issue_repo }}
           ISSUE_NUMBER: ${{ steps.select.outputs.issue_number }}
           ISSUE_ID: ${{ steps.select.outputs.issue_id }}
-          PROJECT_NUMBER: ${{ steps.gather.outputs.project_number || steps.config.outputs.project_number }}
+          PROJECT_NUMBER: ${{ steps.gather.outputs.project_number || steps.select.outputs.project_number || steps.config.outputs.project_number }}
           TARGET_STATUS: ${{ steps.config.outputs.status_blocked }}
         run: |
           ./scripts/mark-needs-triage.sh
