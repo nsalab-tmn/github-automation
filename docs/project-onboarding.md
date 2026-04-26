@@ -315,11 +315,12 @@ Three config files in `config/` need a project entry. Create a PR in github-auto
 **`config/drift-projects.yaml`**:
 
 ```yaml
-project-number: <N>  # top-level, shared across all projects on the same board
+project-number: <N>  # global fallback for projects without a per-project number
 
 projects:
   # existing projects...
   - name: <project>
+    project-number: <M>   # optional; overrides top-level project-number for this project
     knowledge-base: <org>/<project>-knowledge-base
     conventions-path: conventions
     repos:
@@ -334,7 +335,7 @@ projects:
 
 > **Column names are case-sensitive.** The `status` block must match the project board column names exactly: `Backlog`, `Blocked`, `In progress`, `In review`, `Done`.
 
-> **Multiple boards.** `project-number` is a top-level field shared across all projects. If the new project uses a different board than existing projects, the config structure would need refactoring to support per-project board numbers.
+> **Per-project board numbers.** Each project entry supports an optional `project-number` field that overrides the top-level `project-number` for that project's board operations. `resolve-kb.sh` outputs the per-project number as a third space-separated field when present; workflows use it after the gather phase. Projects without a per-project `project-number` fall back to the global top-level value.
 
 ### Verify app installations
 
