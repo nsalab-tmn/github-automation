@@ -205,7 +205,8 @@ jobs:
                 }
                 const [owner, repo] = repoFull.split('/');
                 const convFile = finding.convention_file.toLowerCase();
-                const findingId = `${finding.type}:${convFile}`;
+                const key = (finding.finding_key || convFile).toLowerCase().replace(/[^a-z0-9-]/g, '-');
+                const findingId = `${finding.type}:${convFile}:${key}`;
                 const marker = `<!-- drift:${findingId} -->`;
 
                 // Dedup: skip if we already processed this repo+type+convention combo

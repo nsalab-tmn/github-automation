@@ -33,6 +33,10 @@
               "type": "string",
               "description": "Specific section or aspect within the convention that is violated"
             },
+            "finding_key": {
+              "type": "string",
+              "description": "Stable kebab-case slug identifying this specific check within the convention file. Must be deterministic — the same underlying problem must always produce the same key across runs. Examples: 'missing-repo-description', 'no-kb-link', 'template-markers', 'missing-stale-pr-workflow'."
+            },
             "expected": {
               "type": "string",
               "description": "What the convention says should exist"
@@ -46,7 +50,7 @@
               "description": "Specific actionable fix"
             }
           },
-          "required": ["type", "severity", "repo", "convention_file", "convention_detail", "expected", "actual", "recommendation"]
+          "required": ["type", "severity", "repo", "convention_file", "convention_detail", "finding_key", "expected", "actual", "recommendation"]
         }
       },
       "summary": {
