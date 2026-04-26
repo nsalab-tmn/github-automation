@@ -123,6 +123,12 @@ jobs:
 
 > **Note on `project-sync`, `auto-project`, and Layer 1:** `project-sync` works alongside Layer 1 built-in project workflows. Layer 1 handles the common transitions cleanly (PR linked to issue → In Review, item closed → Done, item reopened → Backlog). `project-sync` handles only what Layer 1 cannot: draft PRs → In Progress, ready_for_review → In Review, review re-requested → In Review, changes requested → In Progress, and PR closed without merge → Backlog. Layer 1 workflows must be enabled on the project board — see the adoption issue for setup instructions.
 
+> **Note — platform-specific jobs in github-automation's own housekeeping.yaml:** The caller template above is the standard starting point for consuming repos. github-automation's own `.github/workflows/housekeeping.yaml` additionally includes two jobs that are **not part of this template and should not be added to consuming repos**:
+> - **`mechanic-dispatch`**: Dispatches `engineering-agent` on every new issue, bypassing bot-event suppression (GitHub suppresses workflow triggers for events created by App tokens, so a direct `workflow_dispatch` call is required).
+> - **`bulk-assign`**: A `workflow_dispatch` utility that bulk-assigns all unassigned open issues to the default assignee.
+>
+> These jobs are intentional and specific to the platform repo. Consuming repos that copy this caller should omit them.
+
 ### Stale check (separate caller)
 
 Stale check runs on a schedule, so it needs its own workflow file:
