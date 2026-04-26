@@ -11,4 +11,5 @@ jobs:
     uses: nsalab-tmn/github-automation/.github/workflows/reusable-stale-check.yaml@main
     with:
       days-before-stale: 30
+      days-before-close: 14
       exempt-labels: pinned,in-progress
