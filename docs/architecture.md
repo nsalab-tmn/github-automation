@@ -339,7 +339,7 @@ Reviews AI-generated PRs against their linked issues. Posts structured GitHub PR
 
 **Gather — CI readiness poll**: before fetching CI results, `gather-pr-context.sh` runs a two-phase poll to prevent false `REQUEST_CHANGES` when beekeeper is dispatched immediately after a push.
 
-- **Phase 1** (up to 30s, 5s intervals): polls until at least one CI check appears on the HEAD SHA.
+- **Phase 1** (up to 30s, 5s intervals): polls the check_runs API until at least one CI check appears on the HEAD SHA.
 - **Phase 2** (up to 150s, 15s intervals): polls until all checks reach `completed` status.
 
 Elapsed wait time is recorded as `ci_wait_seconds` and surfaced in the workflow step summary.
@@ -365,7 +365,7 @@ When all four conditions hold — `decision=approve`, `confidence=high`, `auto_m
 - **Path A (documentation)**: PR has the `documentation` label AND touches only docs-only files (`docs/**`, `*.md`, `prompts/*.md`) — no workflow, script, terraform, or config files.
 - **Path B (compliance)**: PR has the `compliance` label AND changes are limited to configuration files, workflow callers, or documentation — but NOT `reusable-*.yaml` files, NOT files under `scripts/`, NOT files under `terraform/modules/`.
 
-**Merge flow**: polls `mergeStateStatus` via GraphQL (up to 3 minutes) until the PR reaches a mergeable state, then performs a squash merge.
+**Merge flow**: polls `mergeStateStatus` via GraphQL (up to 3 minutes, 10-second intervals) until the PR reaches a mergeable state, then performs a squash merge.
 
 **Telegram notification**: `notify-telegram.sh` distinguishes between "✅ PR auto-merged" (when `AUTO_MERGED=true`) and "PR approved — ready to merge" (when approved but not auto-merged).
 
