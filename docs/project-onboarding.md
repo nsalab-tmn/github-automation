@@ -310,7 +310,7 @@ See [docs/architecture.md](architecture.md) for the full Layer 3 architecture, G
 
 ### Add project to agent configs
 
-Three config files in `config/` need a project entry. Create a PR in github-automation adding the project to all three:
+Four config files in `config/` need a project entry. Create a PR in github-automation adding the project to all four:
 
 **`config/drift-projects.yaml`**:
 
@@ -332,6 +332,19 @@ projects:
 **`config/engineering-agent.yaml`** — add the same `projects` entry. The `agent` section at the top contains global settings (schedule, limits, board column names) shared across all projects.
 
 **`config/review-agent.yaml`** — add the same `projects` entry.
+
+**`config/planning-agent.yaml`** — add the same `projects` entry. The planning-agent decomposes complex issues into mechanic-sized sub-issues. It is manual-trigger only (`workflow_dispatch` with `issue-url` input), uses Claude Opus with extended thinking, and links created sub-issues to the parent issue via the GitHub sub-issue API. Sub-issues are automatically added to the project board by the **Auto-add sub-issues** Layer 1 automation enabled in Phase 1.
+
+```yaml
+- name: <project>
+  knowledge-base: <org>/<project>-knowledge-base
+  conventions-path: conventions
+  project-number: <N>
+  repos:
+    - <org>/<project>-knowledge-base
+    - <org>/<project>-repo1
+    - <org>/<project>-repo2
+```
 
 > **Column names are case-sensitive.** The `status` block must match the project board column names exactly: `Backlog`, `Blocked`, `In progress`, `In review`, `Done`.
 
@@ -418,7 +431,7 @@ Once the project entries exist in config files, the workflows will include the p
 | 4 | Caller workflows present | `gh api repos/<org>/<repo>/contents/.github/workflows` |
 | 4 | Pinned issue has markers | Read pinned issue body, verify HTML comment markers |
 | 4 | Test issue lands on board | Create issue, check board placement |
-| 5 | Project in all 3 agent configs | `grep -l '<project>' config/*.yaml` |
+| 5 | Project in all 4 agent configs | `grep -l '<project>' config/*.yaml` |
 | 5 | Apps have repo access | Org Settings > GitHub Apps — verify each app |
 | 5 | Drift-detect dry-run passes | Actions > drift-detect > Run workflow (dry-run) |
 | 5 | Engineering-agent dry-run passes | Actions > engineering-agent > Run workflow (dry-run) |
