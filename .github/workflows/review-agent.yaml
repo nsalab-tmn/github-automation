@@ -120,8 +120,8 @@ jobs:
         id: notify-telegram
         if: steps.select.outputs.selected == 'true' && inputs.dry-run != true && steps.review.outputs.decision == 'approve'
         env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TRANSPORTER_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TRANSPORTER_CHAT_ID }}
           REVIEW_FILE: review.json
           PR_REPO: ${{ steps.select.outputs.pr_repo }}
           PR_NUMBER: ${{ steps.select.outputs.pr_number }}

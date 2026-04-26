@@ -7,6 +7,9 @@ set -euo pipefail
 #   TELEGRAM_BOT_TOKEN — Telegram bot token (from BotFather)
 #   TELEGRAM_CHAT_ID   — Telegram chat/channel ID to send to
 #
+# Org secrets: TRANSPORTER_BOT_TOKEN, TRANSPORTER_CHAT_ID
+# (namespaced to avoid conflicts with per-repo Telegram bots)
+#
 # Message source (use one):
 #   TELEGRAM_MESSAGE   — pre-built HTML message string
 #   OR: REVIEW_FILE + PR_REPO + PR_NUMBER + ISSUE_NUMBER + RUN_URL
