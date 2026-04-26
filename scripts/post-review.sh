@@ -150,3 +150,8 @@ if [[ -n "$ITEM_ID" && "$ITEM_ID" != "null" ]]; then
     -f fieldId="$STATUS_FIELD_ID" -f optionId="$IN_PROGRESS_ID" >/dev/null
   echo "::notice::Moved issue #${ISSUE_NUMBER} to In progress" >&2
 fi
+
+# Dispatch engineering agent to rework the issue
+ISSUE_URL="https://github.com/${PR_REPO}/issues/${ISSUE_NUMBER}"
+gh workflow run engineering-agent.yaml --field issue-url="$ISSUE_URL"
+echo "::notice::Dispatched engineering-agent for issue #${ISSUE_NUMBER}" >&2
