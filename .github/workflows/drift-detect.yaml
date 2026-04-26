@@ -296,12 +296,22 @@ jobs:
                     });
                   }
 
+                  const categoryMap = {
+                    'repo-documentation.md': 'documentation',
+                    'cicd-workflows.md': 'ci-cd',
+                    'adoption-guide.md': 'ci-cd',
+                    'ansible-conventions.md': 'configuration',
+                  };
+                  const categoryLabel = categoryMap[convFile];
+                  const labels = ['compliance', 'ai-generated'];
+                  if (categoryLabel) labels.push(categoryLabel);
+
                   const issueTitle = `Convention ${finding.type}: ${convFile}`;
                   const created = await github.rest.issues.create({
                     owner, repo,
                     title: issueTitle,
                     body,
-                    labels: ['compliance', 'ai-generated'],
+                    labels,
                   });
                   core.info(`Created issue in ${repoFull}: ${convFile} (#${created.data.number})`);
                   totalCreated++;
