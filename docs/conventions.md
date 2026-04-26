@@ -11,6 +11,7 @@ Technical reference for github-automation workflows.
 | [docs/adoption.md](adoption.md) | Adding workflows to your repo |
 | [docs/architecture.md](architecture.md) | Understanding the 4-layer enforcement architecture |
 | [docs/repo-provisioning.md](repo-provisioning.md) | Self-service repo creation/deletion via Terraform |
+| [docs/project-onboarding.md](project-onboarding.md) | Bringing a project from zero to autonomous pipeline |
 | This file | Need technical details on workflows |
 
 ## Workflow naming
