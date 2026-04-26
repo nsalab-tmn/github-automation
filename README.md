@@ -92,3 +92,11 @@ Organization settings managed as code in `terraform/`:
 Project-specific config lives in `[project]-gitops` repos (created from `template-gitops`). Project repos are created from `template-generic`.
 
 See [docs/repo-provisioning.md](docs/repo-provisioning.md) for the full self-service lifecycle.
+
+## 💰 Bounty Contribution
+
+- **Task:** Document per-project board numbers and finding key dedup mechanism
+- **Reward:** $3
+- **Source:** GitHub-Paid
+- **Date:** 2026-04-27
+
