@@ -71,6 +71,7 @@ rm -f "$PR_DIFF_FILE"
 HEAD_SHA=$(echo "$PR_META" | jq -r '.head_sha // empty')
 
 # --- CI readiness poll: Phase 1 — wait for checks to appear (max 30s) ---
+_ci_wait_start=$(date +%s)
 if [[ -n "${HEAD_SHA}" && "${HEAD_SHA}" != "null" ]]; then
   echo "::notice::  Waiting for CI checks to appear for SHA ${HEAD_SHA:0:7}..." >&2
   _elapsed=0
@@ -115,6 +116,8 @@ if [[ -n "${HEAD_SHA}" && "${HEAD_SHA}" != "null" ]]; then
     fi
   fi
 fi
+ci_wait_seconds=$(( $(date +%s) - _ci_wait_start ))
+echo "ci_wait_seconds=${ci_wait_seconds}" >> "$GITHUB_OUTPUT"
 
 # --- CI check status ---
 echo "::notice::  Fetching CI status" >&2
