@@ -126,7 +126,6 @@ jobs:
           github-token: ${{ steps.app-token.outputs.token }}
           script: |
             const fs = require('fs');
-            const crypto = require('crypto');
             const allFindings = JSON.parse(fs.readFileSync('all-findings.json', 'utf8'));
             const projects = JSON.parse(fs.readFileSync('projects.json', 'utf8'));
             const complianceState = fs.existsSync('compliance-state.json')
@@ -206,8 +205,8 @@ jobs:
                 }
                 const [owner, repo] = repoFull.split('/');
                 const convFile = finding.convention_file.toLowerCase();
-                const hash = crypto.createHash('md5').update(finding.convention_detail || '').digest('hex').substring(0, 6);
-                const findingId = `${finding.type}:${convFile}:${hash}`;
+                const key = (finding.finding_key || convFile).toLowerCase().replace(/[^a-z0-9-]/g, '-');
+                const findingId = `${finding.type}:${convFile}:${key}`;
                 const marker = `<!-- drift:${findingId} -->`;
 
                 // Dedup: skip if we already processed this repo+type+convention combo

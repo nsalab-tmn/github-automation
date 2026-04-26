@@ -57,8 +57,12 @@ to check. Evaluate it on two axes:
 9. `convention_file` MUST be exactly a filename from the conventions input (e.g.,
    `repo-documentation.md`, `ansible-conventions.md`). Do NOT include paths or extra text.
    For org-wide adoption guide findings, use `adoption-guide.md`.
-10. Produce at most ONE finding per `type` + `convention_file` combination per repo.
-    Merge multiple issues from the same convention file into one finding.
+10. Each finding must have a unique `finding_key` — a stable kebab-case slug identifying
+    the specific check within a convention file. The same underlying problem must ALWAYS
+    produce the same key across runs (e.g., `no-kb-link`, `missing-repo-description`,
+    `template-markers`, `missing-stale-pr-workflow`, `missing-pr-review-trigger`).
+    Multiple findings from the same convention file are allowed if they have different keys.
+    Do NOT merge unrelated checks into one finding.
 11. `repo-documentation.md` applies to ALL repos regardless of type. Every repo needs
     project-specific documentation — not just structural compliance (files exist) but
     content compliance (docs reference the specific project, link to the project's
