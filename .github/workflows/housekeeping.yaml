@@ -69,6 +69,7 @@ jobs:
     if: >-
       github.event_name == 'issues' && github.event.action == 'opened'
       && needs.auto-project.result == 'success'
+      && !contains(github.event.issue.labels.*.name, 'pinned')
     runs-on: ubuntu-latest
     permissions:
       actions: write
