@@ -125,15 +125,20 @@ jobs:
           PR_REPO: ${{ steps.select.outputs.pr_repo }}
           PR_NUMBER: ${{ steps.select.outputs.pr_number }}
         run: |
-          echo "::notice::Auto-merge eligible — waiting for checks then squash-merging PR #${PR_NUMBER}"
-          # Wait for required checks to pass before merging
-          for i in $(seq 1 12); do
-            STATUS=$(gh pr checks "$PR_NUMBER" --repo "$PR_REPO" --json name,state --jq '[.[] | select(.name == "PR Validation")] | .[0].state // "PENDING"' 2>/dev/null || echo "PENDING")
-            if [[ "$STATUS" == "SUCCESS" ]]; then
-              echo "::notice::PR Validation passed — merging"
+          echo "::notice::Auto-merge eligible — waiting for mergeable state on PR #${PR_NUMBER}"
+          # Wait for GitHub to report the PR as mergeable (ruleset checks satisfied)
+          for i in $(seq 1 18); do
+            MERGE_STATE=$(gh pr view "$PR_NUMBER" --repo "$PR_REPO" --json mergeStateStatus --jq '.mergeStateStatus' 2>/dev/null || echo "UNKNOWN")
+            echo "::notice::  Merge state: ${MERGE_STATE} (poll ${i}/18)"
+            if [[ "$MERGE_STATE" == "CLEAN" ]]; then
+              echo "::notice::PR is mergeable — squash-merging"
               break
+            elif [[ "$MERGE_STATE" == "BLOCKED" || "$MERGE_STATE" == "DIRTY" ]]; then
+              echo "::warning::PR merge state is ${MERGE_STATE} — skipping auto-merge"
+              echo "merged=false" >> "$GITHUB_OUTPUT"
+              exit 0
             fi
-            if [[ $i -lt 12 ]]; then sleep 10; fi
+            sleep 10
           done
           if gh pr merge "$PR_NUMBER" --repo "$PR_REPO" --squash; then
             echo "merged=true" >> "$GITHUB_OUTPUT"
