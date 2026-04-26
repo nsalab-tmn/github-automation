@@ -31,6 +31,33 @@ For general issues:
 - For configuration files: verify syntax and structure are correct
 - For documentation: verify markdown formatting, links, and references
 
+## Workflow file validation
+
+When the PR modifies `.github/workflows/*.yaml` files:
+
+- **Secret parameter names**: Verify that `secrets:` parameter names passed to
+  reusable workflows use lowercase-with-hyphens (`app-id`, `app-private-key`),
+  **not** SCREAMING_SNAKE_CASE (`APP_ID`, `APP_PRIVATE_KEY`). The parameter
+  names must exactly match what the reusable workflow declares in its
+  `on.workflow_call.secrets:` block. A mismatch means the secret is silently
+  empty at runtime — this is a blocking issue.
+- **Chicken-egg risk for housekeeping.yaml**: If the PR modifies
+  `housekeeping.yaml` (or any workflow that runs on the PR itself), flag the
+  self-referential risk: broken secret names, syntax errors, or invalid inputs
+  in this file make the PR's own CI unmergeable. Treat any suspicious change
+  in such files with extra scrutiny.
+
+## CI status validation
+
+The context includes `ci_status` and `ci_checks`. Before approving:
+
+- If `ci_checks` is empty (`[]`) or `ci_status` is `"unknown"`, flag this as a
+  blocking issue — CI has not run, so the PR cannot be verified.
+- If the required "PR Validation" check is missing from `ci_checks`, flag it —
+  this check must run and pass before approval.
+- A PR where CI has not run or required checks are absent must **never** receive
+  `decision: "approve"`, regardless of how clean the diff looks.
+
 ## Side effects
 
 - Are there changes to files not related to the issue?
@@ -68,5 +95,6 @@ Set `decision: "comment"` when:
 5. Keep summary under 2 sentences.
 6. `auto_merge_eligible` requires: decision=approve AND confidence=high AND
    no blocking issues found.
-7. If CI checks are failing, set decision to "comment" and note the failures —
-   content review is secondary to passing CI.
+7. If CI checks are failing, missing, or have not run at all, set decision to
+   "request_changes" (not "approve") and note the failures — content review
+   is secondary to passing CI. See "CI status validation" above.
