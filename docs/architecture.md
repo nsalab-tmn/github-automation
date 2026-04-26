@@ -192,8 +192,8 @@ Result: ~100% structural determinism (same JSON shape every run), ~95% content d
 |---|---|---|
 | `drift-detect` | Weekly + manual | Compares project repos against conventions, creates compliance issues |
 | `planning-agent` | Manual | Decomposes complex issues into mechanic-sized sub-issues |
-| `engineering-agent` | Manual (crawl phase) | Picks compliance issues from board, implements fixes, creates PRs |
-| `review-agent` | Weekdays + manual | Reviews AI-generated PRs, posts structured reviews |
+| `engineering-agent` | Hourly :00 + manual | Picks compliance issues from board, implements fixes, creates PRs |
+| `review-agent` | Hourly :30 + manual | Reviews AI-generated PRs, posts structured reviews |
 
 ### Convention drift detection
 
