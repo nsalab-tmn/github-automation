@@ -27,7 +27,8 @@ def main():
 
     client = anthropic.Anthropic()
 
-    response = client.messages.create(
+    # Stream to handle large max_tokens (SDK requires streaming for long operations)
+    with client.messages.stream(
         model="claude-opus-4-6",
         max_tokens=32768,
         thinking={
@@ -42,7 +43,8 @@ def main():
                 "content": format_context(context),
             }
         ],
-    )
+    ) as stream:
+        response = stream.get_final_message()
 
     # Log response shape for debugging
     block_types = [f"{b.type}({b.name})" if hasattr(b, "name") else b.type for b in response.content]
