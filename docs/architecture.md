@@ -320,6 +320,18 @@ Reviews AI-generated PRs against their linked issues. Posts structured GitHub PR
 
 **Max 3 review attempts** before escalating to human with `needs-triage` label.
 
+#### Auto-merge
+
+When all four conditions hold — `decision=approve`, `confidence=high`, `auto_merge_eligible=true`, and `auto-merge: true` in `config/review-agent.yaml` — the review agent merges the PR without waiting for human action.
+
+**Eligibility criteria** (`auto_merge_eligible=true`): PR touches only docs-only files (`docs/**`, `*.md`, `prompts/*.md`), has the `documentation` label, and contains no workflow, script, or Terraform changes.
+
+**Merge flow**: polls `mergeStateStatus` via GraphQL (up to 3 minutes) until the PR reaches a mergeable state, then performs a squash merge.
+
+**Telegram notification**: `notify-telegram.sh` distinguishes between "✅ PR auto-merged" (when `AUTO_MERGED=true`) and "PR approved — ready to merge" (when approved but not auto-merged).
+
+**Kill switch**: set `auto-merge: false` in `config/review-agent.yaml` to disable globally.
+
 ### Feedback loop
 
 All four Layer 3 workflows form a closed loop:
