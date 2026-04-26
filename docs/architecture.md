@@ -310,6 +310,16 @@ Picks issues from the project board backlog and implements them autonomously. Th
 
 **Safety invariants**: agent never merges PRs (human review required), never pushes to main (feature branches only), concurrency group prevents parallel runs. See [version-control-only principle](#version-control-only-principle) below.
 
+**Escalation chain** (mechanic → planner → mechanic retry):
+
+When the engineering agent marks an issue `not-workable` with blocker type `too_complex`, it dispatches the planning agent to decompose the issue:
+
+1. Mechanic compiles brief, finds issue `too_complex` → marks not-workable, moves to Blocked with `needs-triage`
+2. `dispatch-planner.sh` checks for an existing `<!-- agent:decomposition -->` comment — if none exists, dispatches `planning-agent` via `workflow_dispatch`
+3. Planner decomposes the issue into sub-issues and posts a `<!-- agent:decomposition -->` summary comment on the parent
+4. If the planner finds no decomposition is needed (issue is already mechanic-sized), `dispatch-mechanic.sh` re-dispatches the engineering agent to retry
+5. **Loop prevention**: the `<!-- agent:decomposition -->` marker check in step 2 ensures the planner is never dispatched twice for the same issue
+
 ### Review agent
 
 Reviews AI-generated PRs against their linked issues. Posts structured GitHub PR reviews.
@@ -373,7 +383,15 @@ human creates ──────────────> complex issue
                                   │
                              decomposes into ──> sub-issues (Backlog)
                              sub-issues               │
-                                                 picks issue
+                  ┌──────────────────────────────picks issue
+                  │                               implements fix
+                  │           too_complex              │
+                  └─ dispatch-planner.sh ◄─── not-workable (Blocked)
+                  │
+                  │  no decomposition needed
+                  └──────────────────────────> dispatch-mechanic.sh
+                                                      │
+                                                 picks issue (retry)
                                                  implements fix
                                                       │
                                                  PR created ──────────> reviews PR
@@ -387,6 +405,8 @@ human creates ──────────────> complex issue
 ```
 
 **The full cycle**: drift-detect finds problems → engineering agent fixes them → review agent validates the fix → human merges. Drift-detect suppresses findings that already have open PRs or were recently fixed.
+
+**Escalation path**: when the mechanic finds an issue `too_complex`, it escalates to the planner via `dispatch-planner.sh`. The planner either decomposes the issue into sub-issues (mechanic picks each up separately) or confirms it is already mechanic-sized and retriggers the mechanic via `dispatch-mechanic.sh`.
 
 Issues that can't be fixed via PR (API operations, manual settings) are triaged to Blocked with `needs-triage` for human attention.
 
@@ -428,6 +448,8 @@ All Layer 3 workflows share a common library of scripts:
 | `set-board-status.sh` | Update issue status on the project board |
 | `claim-issue.sh` | Assign bot + move to In Progress + post comment |
 | `mark-needs-triage.sh` | Add needs-triage label + move to Blocked |
+| `dispatch-planner.sh` | Dispatch planning-agent when blocker is `too_complex` and no decomposition exists |
+| `dispatch-mechanic.sh` | Dispatch engineering-agent to retry an issue after planner confirms no decomposition needed |
 | `record-attempt.sh` | Post structured attempt tracking comment |
 | `close-resolved.sh` | Close issue with evidence comment |
 | `session-summary.sh` | Write step summary to workflow output |
