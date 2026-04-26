@@ -402,6 +402,19 @@ jobs:
                       core.warning(`Failed to add #${created.data.number} to board: ${e.message}`);
                     }
                   }
+
+                  try {
+                    await github.rest.actions.createWorkflowDispatch({
+                      owner: 'nsalab-tmn',
+                      repo: 'github-automation',
+                      workflow_id: 'engineering-agent.yaml',
+                      ref: 'main',
+                      inputs: { 'issue-url': created.data.html_url },
+                    });
+                    core.info(`Dispatched mechanic for ${repoFull}#${created.data.number}`);
+                  } catch (e) {
+                    core.warning(`Failed to dispatch mechanic: ${e.message}`);
+                  }
                 } catch (error) {
                   core.warning(`Failed to create issue in ${repoFull}: ${error.message}`);
                 }
