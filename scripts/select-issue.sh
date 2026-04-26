@@ -200,6 +200,25 @@ for i in $(seq 0 $((CANDIDATE_COUNT - 1))); do
     fi
   fi
 
+  # Check for open sub-issues (parent should wait for children)
+  SUB_COUNT=$(gh api graphql -f query='
+    query($issueId: ID!) {
+      node(id: $issueId) {
+        ... on Issue {
+          subIssues(first: 1, filter: {states: [OPEN]}) {
+            totalCount
+          }
+        }
+      }
+    }
+  ' -f issueId="$ISSUE_ID" 2>/dev/null \
+    | jq '.data.node.subIssues.totalCount // 0' 2>/dev/null || echo "0")
+
+  if [[ "$SUB_COUNT" -gt 0 ]]; then
+    echo "::notice::  Skipping: ${SUB_COUNT} open sub-issue(s)" >&2
+    continue
+  fi
+
   # This candidate passed all checks
   echo "::notice::Selected #${ISSUE_NUM} in ${ISSUE_REPO}: $(echo "$CANDIDATE" | jq -r '.title')" >&2
   echo "$CANDIDATE"
