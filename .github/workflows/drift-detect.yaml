@@ -142,47 +142,57 @@ jobs:
               validRepos.add(project['knowledge-base']);
             }
 
-            // Fetch project board IDs once (for adding new issues to board)
-            let projectId, statusFieldId, backlogOptionId;
-            let priorityFieldId, priorityOptions, sizeFieldId, sizeOptions;
-            try {
-              const projectNumber = parseInt(process.env.PROJECT_NUMBER) || 6;
-              const pData = await github.graphql(`
-                query($org: String!, $number: Int!) {
-                  organization(login: $org) {
-                    projectV2(number: $number) {
-                      id
-                      status: field(name: "Status") {
-                        ... on ProjectV2SingleSelectField {
-                          id
-                          options { id name }
+            // Fetch project board IDs per board number (for adding new issues to board)
+            const boardDataByNumber = new Map();
+            const boardNumbers = new Set();
+            for (const p of projects) {
+              if (!p['project-number']) {
+                core.warning(`Project "${p.name}" has no project-number — its issues will not be added to any board`);
+                continue;
+              }
+              boardNumbers.add(p['project-number']);
+            }
+            for (const num of boardNumbers) {
+              try {
+                const pData = await github.graphql(`
+                  query($org: String!, $number: Int!) {
+                    organization(login: $org) {
+                      projectV2(number: $number) {
+                        id
+                        status: field(name: "Status") {
+                          ... on ProjectV2SingleSelectField {
+                            id
+                            options { id name }
+                          }
                         }
-                      }
-                      priority: field(name: "Priority") {
-                        ... on ProjectV2SingleSelectField {
-                          id
-                          options { id name }
+                        priority: field(name: "Priority") {
+                          ... on ProjectV2SingleSelectField {
+                            id
+                            options { id name }
+                          }
                         }
-                      }
-                      size: field(name: "Size") {
-                        ... on ProjectV2SingleSelectField {
-                          id
-                          options { id name }
+                        size: field(name: "Size") {
+                          ... on ProjectV2SingleSelectField {
+                            id
+                            options { id name }
+                          }
                         }
                       }
                     }
                   }
-                }
-              `, { org: 'nsalab-tmn', number: projectNumber });
-              projectId = pData.organization.projectV2.id;
-              statusFieldId = pData.organization.projectV2.status.id;
-              backlogOptionId = pData.organization.projectV2.status.options.find(o => o.name === 'Backlog')?.id;
-              priorityFieldId = pData.organization.projectV2.priority?.id;
-              priorityOptions = pData.organization.projectV2.priority?.options || [];
-              sizeFieldId = pData.organization.projectV2.size?.id;
-              sizeOptions = pData.organization.projectV2.size?.options || [];
-            } catch (e) {
-              core.warning(`Could not fetch project board IDs: ${e.message}`);
+                `, { org: 'nsalab-tmn', number: num });
+                boardDataByNumber.set(num, {
+                  projectId: pData.organization.projectV2.id,
+                  statusFieldId: pData.organization.projectV2.status.id,
+                  backlogOptionId: pData.organization.projectV2.status.options.find(o => o.name === 'Backlog')?.id,
+                  priorityFieldId: pData.organization.projectV2.priority?.id,
+                  priorityOptions: pData.organization.projectV2.priority?.options || [],
+                  sizeFieldId: pData.organization.projectV2.size?.id,
+                  sizeOptions: pData.organization.projectV2.size?.options || [],
+                });
+              } catch (e) {
+                core.warning(`Could not fetch project board IDs for board #${num}: ${e.message}`);
+              }
             }
 
             let totalCreated = 0;
@@ -204,6 +214,12 @@ jobs:
                   repoFull = match || `nsalab-tmn/${repoFull}`;
                 }
                 const [owner, repo] = repoFull.split('/');
+                const repoProject = projects.find(p => p.repos && p.repos.includes(repoFull));
+                const boardNumber = repoProject?.['project-number'];
+                if (!boardNumber) {
+                  core.warning(`No project-number for ${repoFull} — skipping board operations`);
+                }
+                const { projectId, statusFieldId, backlogOptionId, priorityFieldId, priorityOptions, sizeFieldId, sizeOptions } = (boardNumber && boardDataByNumber.get(boardNumber)) || {};
                 const convFile = finding.convention_file.toLowerCase();
                 const key = (finding.finding_key || convFile).toLowerCase().replace(/[^a-z0-9-]/g, '-');
                 const findingId = `${finding.type}:${convFile}:${key}`;
