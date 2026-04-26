@@ -319,6 +319,14 @@ jobs:
             echo "pr_url=${PR_URL}" >> "$GITHUB_OUTPUT"
             echo "::notice::PR created: ${PR_URL}"
           fi
+          echo "pr_created=true" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch review agent
+        if: steps.pr.outputs.pr_created == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          gh workflow run review-agent --repo ${{ github.repository }} -f pr-url="${{ steps.pr.outputs.pr_url }}"
 
       # Handle no changes — move to Blocked
       - name: Handle no changes

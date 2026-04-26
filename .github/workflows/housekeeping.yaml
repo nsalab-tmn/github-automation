@@ -64,6 +64,29 @@ jobs:
       app-id: ${{ secrets.APP_ID }}
       app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
+  mechanic-dispatch:
+    needs: auto-project
+    if: >-
+      github.event_name == 'issues' && github.event.action == 'opened'
+      && needs.auto-project.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Generate app token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ secrets.MECHANIC_CLIENT_ID }}
+          private-key: ${{ secrets.MECHANIC_PRIVATE_KEY }}
+          owner: nsalab-tmn
+
+      - name: Dispatch engineering agent
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          gh workflow run engineering-agent --repo nsalab-tmn/github-automation -f issue-url="${{ github.event.issue.html_url }}"
+
   issue-defaults:
     if: github.event_name == 'issues'
     uses: nsalab-tmn/github-automation/.github/workflows/reusable-issue-defaults.yaml@main
