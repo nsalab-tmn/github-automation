@@ -29,7 +29,7 @@ def main():
 
     response = client.messages.create(
         model="claude-opus-4-6",
-        max_tokens=16384,
+        max_tokens=32768,
         thinking={
             "type": "adaptive",
         },
@@ -44,10 +44,20 @@ def main():
         ],
     )
 
+    # Log response shape for debugging
+    block_types = [f"{b.type}({b.name})" if hasattr(b, "name") else b.type for b in response.content]
+    print(f"Response blocks: {block_types}", file=sys.stderr)
+    print(f"Stop reason: {response.stop_reason}", file=sys.stderr)
+
     for block in response.content:
         if block.type == "tool_use" and block.name == "decompose_issue":
             print(json.dumps(block.input, indent=2))
             return
+
+    # Fallback: print any text blocks for debugging
+    for block in response.content:
+        if block.type == "text":
+            print(f"Text block: {block.text[:500]}", file=sys.stderr)
 
     print("Error: no tool_use block in response", file=sys.stderr)
     sys.exit(1)
