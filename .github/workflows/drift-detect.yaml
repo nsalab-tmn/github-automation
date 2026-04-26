@@ -300,7 +300,7 @@ jobs:
                     owner, repo,
                     title: issueTitle,
                     body,
-                    labels: ['compliance'],
+                    labels: ['compliance', 'ai-generated'],
                   });
                   core.info(`Created issue in ${repoFull}: ${convFile} (#${created.data.number})`);
                   totalCreated++;
