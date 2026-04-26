@@ -67,6 +67,55 @@ gh api "repos/${PR_REPO}/pulls/${PR_NUMBER}" \
 PR_DIFF=$(cat "$PR_DIFF_FILE")
 rm -f "$PR_DIFF_FILE"
 
+# Extract HEAD SHA early for CI readiness polling
+HEAD_SHA=$(echo "$PR_META" | jq -r '.head_sha // empty')
+
+# --- CI readiness poll: Phase 1 — wait for checks to appear (max 30s) ---
+if [[ -n "${HEAD_SHA}" && "${HEAD_SHA}" != "null" ]]; then
+  echo "::notice::  Waiting for CI checks to appear for SHA ${HEAD_SHA:0:7}..." >&2
+  _elapsed=0
+  _check_count=0
+  for _i in 1 2 3 4 5 6; do
+    _check_count=$(safe_api "0" "repos/${PR_REPO}/commits/${HEAD_SHA}/check-runs" \
+      --jq '.check_runs | length')
+    echo "::notice::    [CI poll 1/2] elapsed=${_elapsed}s checks_found=${_check_count}" >&2
+    if [[ "${_check_count}" -gt 0 ]]; then
+      echo "::notice::  CI checks appeared (${_check_count} check(s) found)" >&2
+      break
+    fi
+    if [[ "${_i}" -lt 6 ]]; then
+      sleep 5
+      _elapsed=$(( _elapsed + 5 ))
+    fi
+  done
+  if [[ "${_check_count}" -eq 0 ]]; then
+    echo "::warning::  No CI checks appeared within 30s — proceeding with unknown CI status" >&2
+  else
+    # --- CI readiness poll: Phase 2 — wait for all checks to complete (max 150s) ---
+    echo "::notice::  Waiting for all CI checks to complete..." >&2
+    _elapsed=0
+    _pending="${_check_count}"
+    for _i in 1 2 3 4 5 6 7 8 9 10; do
+      _total=$(safe_api "0" "repos/${PR_REPO}/commits/${HEAD_SHA}/check-runs" \
+        --jq '.check_runs | length')
+      _pending=$(safe_api "1" "repos/${PR_REPO}/commits/${HEAD_SHA}/check-runs" \
+        --jq '[.check_runs[] | select(.status != "completed")] | length')
+      echo "::notice::    [CI poll 2/2] elapsed=${_elapsed}s pending=${_pending}/${_total}" >&2
+      if [[ "${_pending}" -eq 0 ]]; then
+        echo "::notice::  All ${_total} CI check(s) completed" >&2
+        break
+      fi
+      if [[ "${_i}" -lt 10 ]]; then
+        sleep 15
+        _elapsed=$(( _elapsed + 15 ))
+      fi
+    done
+    if [[ "${_pending}" -gt 0 ]]; then
+      echo "::warning::  CI checks did not all complete within 150s — proceeding with partial CI status" >&2
+    fi
+  fi
+fi
+
 # --- CI check status ---
 echo "::notice::  Fetching CI status" >&2
 HEAD_SHA=$(echo "$PR_META" | jq -r '.head_sha')
