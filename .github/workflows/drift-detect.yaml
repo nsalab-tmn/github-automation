@@ -144,6 +144,7 @@ jobs:
 
             // Fetch project board IDs once (for adding new issues to board)
             let projectId, statusFieldId, backlogOptionId;
+            let priorityFieldId, priorityOptions, sizeFieldId, sizeOptions;
             try {
               const projectNumber = parseInt(process.env.PROJECT_NUMBER) || 6;
               const pData = await github.graphql(`
@@ -151,7 +152,19 @@ jobs:
                   organization(login: $org) {
                     projectV2(number: $number) {
                       id
-                      field(name: "Status") {
+                      status: field(name: "Status") {
+                        ... on ProjectV2SingleSelectField {
+                          id
+                          options { id name }
+                        }
+                      }
+                      priority: field(name: "Priority") {
+                        ... on ProjectV2SingleSelectField {
+                          id
+                          options { id name }
+                        }
+                      }
+                      size: field(name: "Size") {
                         ... on ProjectV2SingleSelectField {
                           id
                           options { id name }
@@ -162,8 +175,12 @@ jobs:
                 }
               `, { org: 'nsalab-tmn', number: projectNumber });
               projectId = pData.organization.projectV2.id;
-              statusFieldId = pData.organization.projectV2.field.id;
-              backlogOptionId = pData.organization.projectV2.field.options.find(o => o.name === 'Backlog')?.id;
+              statusFieldId = pData.organization.projectV2.status.id;
+              backlogOptionId = pData.organization.projectV2.status.options.find(o => o.name === 'Backlog')?.id;
+              priorityFieldId = pData.organization.projectV2.priority?.id;
+              priorityOptions = pData.organization.projectV2.priority?.options || [];
+              sizeFieldId = pData.organization.projectV2.size?.id;
+              sizeOptions = pData.organization.projectV2.size?.options || [];
             } catch (e) {
               core.warning(`Could not fetch project board IDs: ${e.message}`);
             }
@@ -299,8 +316,10 @@ jobs:
                         }
                       `, { projectId, contentId: created.data.node_id });
 
+                      const itemId = addResult.addProjectV2ItemById?.item?.id;
+
                       // Set status to Backlog
-                      if (backlogOptionId && addResult.addProjectV2ItemById?.item?.id) {
+                      if (backlogOptionId && itemId) {
                         await github.graphql(`
                           mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
                             updateProjectV2ItemFieldValue(input: {
@@ -310,11 +329,46 @@ jobs:
                           }
                         `, {
                           projectId,
-                          itemId: addResult.addProjectV2ItemById.item.id,
+                          itemId,
                           fieldId: statusFieldId,
                           optionId: backlogOptionId,
                         });
                       }
+
+                      // Set Priority based on severity (high→P1, medium→P2, low→P3)
+                      if (priorityFieldId && itemId) {
+                        const severityToPriority = { high: 'P1', medium: 'P2', low: 'P3' };
+                        const targetPriority = severityToPriority[finding.severity] || 'P3';
+                        const priorityOptionId = priorityOptions.find(o => o.name === targetPriority)?.id;
+                        if (priorityOptionId) {
+                          await github.graphql(`
+                            mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
+                              updateProjectV2ItemFieldValue(input: {
+                                projectId: $projectId, itemId: $itemId, fieldId: $fieldId,
+                                value: { singleSelectOptionId: $optionId }
+                              }) { projectV2Item { id } }
+                            }
+                          `, { projectId, itemId, fieldId: priorityFieldId, optionId: priorityOptionId });
+                          core.info(`Set Priority to ${targetPriority} for #${created.data.number}`);
+                        }
+                      }
+
+                      // Set Size to S (most compliance fixes are small)
+                      if (sizeFieldId && itemId) {
+                        const sizeOptionId = sizeOptions.find(o => o.name === 'S')?.id;
+                        if (sizeOptionId) {
+                          await github.graphql(`
+                            mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
+                              updateProjectV2ItemFieldValue(input: {
+                                projectId: $projectId, itemId: $itemId, fieldId: $fieldId,
+                                value: { singleSelectOptionId: $optionId }
+                              }) { projectV2Item { id } }
+                            }
+                          `, { projectId, itemId, fieldId: sizeFieldId, optionId: sizeOptionId });
+                          core.info(`Set Size to S for #${created.data.number}`);
+                        }
+                      }
+
                       core.info(`Added #${created.data.number} to project board`);
                       totalBoardAdded++;
                     } catch (e) {
