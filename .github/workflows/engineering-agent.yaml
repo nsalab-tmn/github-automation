@@ -138,6 +138,14 @@ jobs:
           echo "already_resolved=$(jq -r '.already_resolved' brief.json)" >> "$GITHUB_OUTPUT"
           echo "workable=$(jq -r '.workable' brief.json)" >> "$GITHUB_OUTPUT"
           echo "confidence=$(jq -r '.confidence' brief.json)" >> "$GITHUB_OUTPUT"
+          echo "cross_repo_action=$(jq -r '.cross_repo_action // "none"' brief.json)" >> "$GITHUB_OUTPUT"
+          echo "target_repo=$(jq -r '.target_repo // ""' brief.json)" >> "$GITHUB_OUTPUT"
+          echo "blocker_title=$(jq -r '.blocker_title // ""' brief.json)" >> "$GITHUB_OUTPUT"
+          {
+            echo 'blocker_body<<GHADELIM'
+            jq -r '.blocker_body // ""' brief.json
+            echo 'GHADELIM'
+          } >> "$GITHUB_OUTPUT"
           echo "::notice::Already resolved: $(jq -r '.already_resolved' brief.json), Workable: $(jq -r '.workable' brief.json), Confidence: $(jq -r '.confidence' brief.json)"
 
       # Handle already-resolved (skipped in dry-run)
@@ -174,6 +182,38 @@ jobs:
           ./scripts/record-attempt.sh
           ./scripts/mark-needs-triage.sh
           echo "::warning::Issue deemed not workable — moved to Blocked with needs-triage"
+
+      # Transfer issue to target repo when all work belongs there
+      - name: Transfer issue to target repo
+        if: steps.select.outputs.selected == 'true' && steps.brief.outputs.already_resolved != 'true' && steps.brief.outputs.workable == 'false' && steps.brief.outputs.cross_repo_action == 'transfer' && inputs.dry-run != true
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          TARGET_REPO: ${{ steps.brief.outputs.target_repo }}
+          ISSUE_REPO: ${{ steps.select.outputs.issue_repo }}
+          ISSUE_NUMBER: ${{ steps.select.outputs.issue_number }}
+        run: |
+          TARGET_OWNER=$(echo "$TARGET_REPO" | cut -d'/' -f1)
+          TARGET_REPO_NAME=$(echo "$TARGET_REPO" | cut -d'/' -f2)
+          gh api repos/$ISSUE_REPO/issues/$ISSUE_NUMBER/transfer \
+            -f new_owner="$TARGET_OWNER" -f new_repository="$TARGET_REPO_NAME"
+
+      # Create blocking issue in target repo when current repo's fix depends on it
+      - name: Create blocking issue in target repo
+        if: steps.select.outputs.selected == 'true' && steps.brief.outputs.already_resolved != 'true' && steps.brief.outputs.workable == 'false' && steps.brief.outputs.cross_repo_action == 'create_blocker' && inputs.dry-run != true
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          TARGET_REPO: ${{ steps.brief.outputs.target_repo }}
+          BLOCKER_TITLE: ${{ steps.brief.outputs.blocker_title }}
+          BLOCKER_BODY: ${{ steps.brief.outputs.blocker_body }}
+          ISSUE_REPO: ${{ steps.select.outputs.issue_repo }}
+          ISSUE_NUMBER: ${{ steps.select.outputs.issue_number }}
+        run: |
+          BLOCKER_URL=$(gh issue create --repo "$TARGET_REPO" \
+            --title "$BLOCKER_TITLE" \
+            --body "$BLOCKER_BODY" \
+            --label compliance)
+          gh issue comment $ISSUE_NUMBER --repo $ISSUE_REPO \
+            --body "Blocked by $BLOCKER_URL — fix needed in $TARGET_REPO first."
 
       # Step 5: Implement (Claude Code CLI)
       - name: Checkout target repo

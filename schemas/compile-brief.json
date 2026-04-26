@@ -45,6 +45,23 @@
         },
         "description": "Blockers preventing implementation, if any"
       },
+      "cross_repo_action": {
+        "type": "string",
+        "enum": ["transfer", "create_blocker", "none"],
+        "description": "Routing action when cross_repo_dependency is the blocker. 'transfer' moves the issue to the target repo when all work belongs there. 'create_blocker' creates a blocking issue in the target repo when the current repo's fix depends on another repo first. 'none' falls through to needs-triage."
+      },
+      "target_repo": {
+        "type": "string",
+        "description": "Full owner/name of the target repo (e.g. 'nsalab-tmn/some-repo'). Required when cross_repo_action is 'transfer' or 'create_blocker'."
+      },
+      "blocker_title": {
+        "type": "string",
+        "description": "Title for the blocking issue to create in the target repo. Used when cross_repo_action is 'create_blocker'."
+      },
+      "blocker_body": {
+        "type": "string",
+        "description": "Self-contained body for the blocking issue. Must include: what to fix, why, acceptance criteria, and key files. The reader will not have access to the original issue. Used when cross_repo_action is 'create_blocker'."
+      },
       "brief": {
         "type": "object",
         "properties": {
