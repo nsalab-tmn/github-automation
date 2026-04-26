@@ -476,7 +476,7 @@ Vertical distribution: project repos follow project knowledge base, which follow
 | Project board Layer 0 (built-in automations) | Internal | `github-project-automation[bot]` |
 | Project board Layer 2 (auto-project, project-sync) | GitHub App token | `nsalab-automation[bot]` |
 | Layer 3 drift detection (issue creation, board-add) | GitHub App token | `nsalab-librarian[bot]` |
-| Layer 3 planning agent (sub-issue creation) | GitHub App token | `nsalab-librarian[bot]` |
+| Layer 3 planning agent (sub-issue creation) | GitHub App token | `nsalab-fortune[bot]` |
 | Layer 3 engineering agent (checkout, push, PR creation) | GitHub App token | `nsalab-mechanic[bot]` |
 | Layer 3 review agent (post reviews, board updates) | GitHub App token | `nsalab-beekeeper[bot]` |
 | Claude API calls (all Layer 3 Decide phases) | `ANTHROPIC_API_KEY` | N/A |
@@ -486,6 +486,7 @@ Each Layer 3 workflow has its own GitHub App identity for clean audit trails and
 
 Secrets are org-level (shared across all repos):
 - `LIBRARIAN_CLIENT_ID`, `LIBRARIAN_PRIVATE_KEY` — drift-detect (`nsalab-librarian`)
+- `FORTUNE_CLIENT_ID`, `FORTUNE_PRIVATE_KEY` — planning-agent (`nsalab-fortune`)
 - `MECHANIC_CLIENT_ID`, `MECHANIC_PRIVATE_KEY` — engineering-agent (`nsalab-mechanic`)
 - `BEEKEEPER_CLIENT_ID`, `BEEKEEPER_PRIVATE_KEY` — review-agent (`nsalab-beekeeper`)
 - `APP_CLIENT_ID`, `APP_PRIVATE_KEY` — Layer 2 workflows (`nsalab-automation`)
