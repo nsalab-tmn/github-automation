@@ -119,12 +119,19 @@ jobs:
 
       - name: Auto-merge eligible PR
         id: auto-merge
-        if: steps.select.outputs.selected == 'true' && inputs.dry-run != true && steps.review.outputs.decision == 'approve' && steps.review.outputs.auto_merge == 'true' && steps.config.outputs.auto_merge == 'True'
+        if: steps.select.outputs.selected == 'true' && inputs.dry-run != true && steps.review.outputs.decision == 'approve'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_REPO: ${{ steps.select.outputs.pr_repo }}
           PR_NUMBER: ${{ steps.select.outputs.pr_number }}
+          REVIEW_AUTO_MERGE: ${{ steps.review.outputs.auto_merge }}
+          CONFIG_AUTO_MERGE: ${{ steps.config.outputs.auto_merge }}
         run: |
+          echo "merged=false" >> "$GITHUB_OUTPUT"
+          if [[ "$REVIEW_AUTO_MERGE" != "true" ]] || [[ "$CONFIG_AUTO_MERGE" != "True" ]]; then
+            echo "::notice::Auto-merge not eligible (review=$REVIEW_AUTO_MERGE, config=$CONFIG_AUTO_MERGE) — skipping"
+            exit 0
+          fi
           echo "::notice::Auto-merge eligible — waiting for mergeable state on PR #${PR_NUMBER}"
           # Wait for GitHub to report the PR as mergeable (ruleset checks satisfied)
           for i in $(seq 1 18); do
@@ -135,7 +142,6 @@ jobs:
               break
             elif [[ "$MERGE_STATE" == "BLOCKED" || "$MERGE_STATE" == "DIRTY" ]]; then
               echo "::warning::PR merge state is ${MERGE_STATE} — skipping auto-merge"
-              echo "merged=false" >> "$GITHUB_OUTPUT"
               exit 0
             fi
             sleep 10
@@ -144,7 +150,6 @@ jobs:
             echo "merged=true" >> "$GITHUB_OUTPUT"
           else
             echo "::warning::Auto-merge failed"
-            echo "merged=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Notify Telegram on approve
