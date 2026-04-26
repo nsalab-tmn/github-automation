@@ -99,18 +99,22 @@ jobs:
       - name: Show decomposition (dry run)
         if: steps.decompose.outputs.needs_decomposition == 'true' && inputs.dry-run == true
         run: |
+          SUB_COUNT=$(jq '.sub_issues | length // 0' decomposition.json)
           echo "## Decomposition preview" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          # Summary table — enough for debug, no full issue bodies
-          echo "| Phase | Title | Deps | Labels | Body size |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|-------|-------|------|--------|-----------|" >> "$GITHUB_STEP_SUMMARY"
-          jq -r '.sub_issues[] | "| \(.phase) | \(.title) | \(.depends_on_phases | join(",") | if . == "" then "—" else . end) | \(.labels | join(", ")) | \(.body | length) chars |"' decomposition.json >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "**Reason:** $(jq -r '.reason' decomposition.json)" >> "$GITHUB_STEP_SUMMARY"
-          # Log: phase titles + dependency graph (no bodies)
-          echo "::group::Decomposition summary"
-          jq -r '.sub_issues[] | "Phase \(.phase): \(.title) [deps: \(.depends_on_phases | join(",") | if . == "" then "none" else . end)] [\(.body | length) chars]"' decomposition.json
-          echo "::endgroup::"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$SUB_COUNT" -eq 0 ]]; then
+            echo "::warning::Model returned needs_decomposition=true but 0 sub-issues — likely incomplete tool output"
+            echo "⚠️ Model returned 0 sub-issues despite needs_decomposition=true. Re-run recommended." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "| Phase | Title | Deps | Labels | Body size |" >> "$GITHUB_STEP_SUMMARY"
+            echo "|-------|-------|------|--------|-----------|" >> "$GITHUB_STEP_SUMMARY"
+            jq -r '.sub_issues[] | "| \(.phase) | \(.title) | \(.depends_on_phases | join(",") | if . == "" then "—" else . end) | \(.labels | join(", ")) | \(.body | length) chars |"' decomposition.json >> "$GITHUB_STEP_SUMMARY"
+            echo "::group::Decomposition summary"
+            jq -r '.sub_issues[] | "Phase \(.phase): \(.title) [deps: \(.depends_on_phases | join(",") | if . == "" then "none" else . end)] [\(.body | length) chars]"' decomposition.json
+            echo "::endgroup::"
+          fi
 
       - name: Handle no decomposition needed
         if: steps.decompose.outputs.needs_decomposition == 'false'
@@ -132,7 +136,7 @@ jobs:
           echo "::notice::Issue does not need decomposition — posted comment"
 
       - name: Create sub-issues
-        if: steps.decompose.outputs.needs_decomposition == 'true' && inputs.dry-run != true
+        if: steps.decompose.outputs.needs_decomposition == 'true' && steps.decompose.outputs.sub_count != '0' && inputs.dry-run != true
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           ISSUE_REPO: ${{ steps.parse.outputs.issue_repo }}
