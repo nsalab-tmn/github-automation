@@ -1,6 +1,6 @@
 agent:
   project-number: 6
-  schedule: "0 9 * * 1-5"          # weekdays 9am UTC (1h after engineering-agent)
+  schedule: "30 * * * *"            # every hour at :30 (informational — workflow file is source of truth)
   timeout-minutes: 15
   max-review-attempts: 3
   require-pr-labels:

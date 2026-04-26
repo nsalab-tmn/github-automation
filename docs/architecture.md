@@ -295,7 +295,7 @@ Picks issues from the project board backlog and implements them autonomously. Th
  └──────────────────┘      └──────────────────┘       └──────────────────┘
 ```
 
-**Issue selection**: Priority > Size > Type > Age (deterministic, no AI). Only issues on the project board with `compliance` label (crawl phase). Paginates through all board items.
+**Issue selection**: Priority > Size > Type > Age (deterministic, no AI). Scans all project boards defined in the agent config (`projects[].project-number`), filters to only repos listed in `projects[].repos`, then ranks across boards. Paginates through all board items. Currently limited to issues with the `compliance` label (crawl phase, configurable via `require-labels`).
 
 **State machine** — board columns: Backlog → Blocked → In progress → In review → Done
 
@@ -344,7 +344,7 @@ Reviews AI-generated PRs against their linked issues. Posts structured GitHub PR
 
 Elapsed wait time is recorded as `ci_wait_seconds` and surfaced in the workflow step summary.
 
-**PR selection**: board-driven, finds issues in "In review" status with open `ai-generated` PRs. Skips PRs with failing CI or max review attempts reached. Sorts by linked issue Priority > Age.
+**PR selection**: scans all configured project boards for issues in "In review" status, filters to allowed repos (`projects[].repos`), then finds open PRs with the `ai-generated` label. Skips PRs with failing CI or max review attempts reached. Sorts by linked issue Priority > Age.
 
 **Review decisions**:
 - `approve` — changes address the issue, conventions followed, minimal and focused

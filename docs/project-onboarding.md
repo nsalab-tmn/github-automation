@@ -329,6 +329,8 @@ projects:
       - <org>/<project>-repo2
 ```
 
+The `repos` array serves dual purpose: (1) drift-detect scans these repos for convention compliance, and (2) the engineering-agent and review-agent use it as an **allowed repos filter** — issues/PRs from repos not in this list are ignored during selection, even if they appear on the same board. If you add a repo to the board but forget to add it to the config, the agents won't pick up its issues.
+
 **`config/engineering-agent.yaml`** — add the same `projects` entry. The `agent` section at the top contains global settings (schedule, limits, board column names) shared across all projects.
 
 **`config/review-agent.yaml`** — add the same `projects` entry.
