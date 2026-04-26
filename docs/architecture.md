@@ -180,8 +180,9 @@ Claude's output is constrained at multiple levels:
 | Forced tool use | `tool_choice: {type: "tool", name: "..."}` | No free-form text, must use schema |
 | JSON schema | `input_schema` on the tool | Output structure is fixed |
 | Enum fields | `type`, `severity` are enums | Limited vocabulary |
-| Filename constraint | `convention_file` must match input filenames | Stable dedup keys |
-| Prompt rules | "ONE finding per type+file per repo" | Consolidation prevents splitting |
+| finding_key | Stable kebab-case slug per finding (e.g., no-kb-link, template-markers) | Granular dedup — multiple findings per convention_file allowed |
+| Marker format | `<!-- drift:gap:repo-documentation.md:no-kb-link -->` | Unique per repo+file+key combination |
+| Prompt rules | Distinct `finding_key` required per finding; multiple findings per `convention_file` allowed | Granular dedup without suppressing unrelated findings |
 
 Result: ~100% structural determinism (same JSON shape every run), ~95% content determinism (same findings for same input, minor wording variation in free-text fields).
 
@@ -229,6 +230,14 @@ Issues are created as `nsalab-librarian[bot]` (GitHub App) with `compliance` lab
 | None of the above | Create issue + add to project board |
 
 New issues are automatically added to the project board with Backlog status (compensates for GitHub's suppression of `issues.opened` events from App tokens).
+
+**Finding key deduplication** — each finding carries a `finding_key` field, which is required in the drift-findings schema. It is a stable kebab-case slug identifying the specific check within a `convention_file` (e.g., `no-kb-link`, `template-markers`). The HTML marker embedded in each issue encodes all three coordinates:
+
+```
+<!-- drift:<type>:<convention_file>:<finding_key> -->
+```
+
+This replaces the old convention_file-only dedup, which suppressed all findings for a file once any finding existed. Multiple findings per `convention_file` are now allowed as long as they have distinct keys — for example, `repo-documentation.md` can simultaneously have open findings for `no-kb-link` and `template-markers` on the same repo.
 
 ### Planning agent
 
