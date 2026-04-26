@@ -179,7 +179,7 @@ Organization settings are managed via Terraform in the `terraform/` directory:
 
 - `configs/rulesets.yaml` — org-wide branch protection rulesets
 - `configs/gitops-projects.yaml` — gitops repos created from `template-gitops`
-- `configs/labels.yaml` — labels for this repo
+- `configs/labels.yaml` — labels for this repo and template repos (`template-gitops`, `template-generic`)
 - `modules/github_repository/` — reusable module for repo settings (supports template creation)
 - `modules/github_issue_labels/` — reusable module for standard label sets
 - `modules/github_organization_ruleset/` — reusable module for org rulesets

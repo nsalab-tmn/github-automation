@@ -18,6 +18,7 @@ resource "github_repository" "this" {
   has_projects    = var.has_projects
   has_wiki        = var.has_wiki
   has_discussions = var.has_discussions
+  is_template     = var.is_template
 
   dynamic "template" {
     for_each = var.template != null ? [var.template] : []
