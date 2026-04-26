@@ -124,9 +124,7 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_REPO: ${{ steps.select.outputs.pr_repo }}
           PR_NUMBER: ${{ steps.select.outputs.pr_number }}
-        run: |
-          echo "::notice::Auto-merge eligible — squash-merging PR #${PR_NUMBER} in ${PR_REPO}"
-          gh pr merge "$PR_NUMBER" --repo "$PR_REPO" --squash || echo "::warning::Auto-merge failed (conflicts or failing checks), skipping"
+        run: bash scripts/wait-and-merge.sh
 
       - name: Notify Telegram on approve
         id: notify-telegram
@@ -139,7 +137,7 @@ jobs:
           PR_NUMBER: ${{ steps.select.outputs.pr_number }}
           ISSUE_NUMBER: ${{ steps.select.outputs.issue_number }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          AUTO_MERGED: ${{ steps.auto-merge.outcome == 'success' && steps.review.outputs.auto_merge == 'true' }}
+          AUTO_MERGED: ${{ steps.auto-merge.outputs.merged }}
         run: bash scripts/notify-telegram.sh
 
       - name: Session summary

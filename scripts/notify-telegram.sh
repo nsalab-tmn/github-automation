@@ -39,6 +39,16 @@ if [[ -z "${TELEGRAM_MESSAGE:-}" ]]; then
 ${SUMMARY}
 
 <a href=\"${RUN_URL:-}\">View review run</a>"
+  elif [[ "${AUTO_MERGED:-}" == "false" ]]; then
+    TELEGRAM_MESSAGE="<b>PR approved — merge failed ❌ (CI pending or merge error)</b>
+
+<b>PR:</b> <a href=\"${PR_URL}\">${PR_REPO}#${PR_NUMBER}</a>
+<b>Issue:</b> <a href=\"${ISSUE_URL}\">#${ISSUE_NUMBER}</a>
+<b>Confidence:</b> ${CONFIDENCE}
+
+${SUMMARY}
+
+<a href=\"${RUN_URL:-}\">View review run</a>"
   else
     TELEGRAM_MESSAGE="<b>PR approved — ready to merge</b>
 
