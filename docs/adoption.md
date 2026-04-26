@@ -123,7 +123,7 @@ jobs:
 
 > **Note on `project-sync`, `auto-project`, and Layer 1:** `project-sync` works alongside Layer 1 built-in project workflows. Layer 1 handles the common transitions cleanly (PR linked to issue → In Review, item closed → Done, item reopened → Backlog). `project-sync` handles only what Layer 1 cannot: draft PRs → In Progress, ready_for_review → In Review, review re-requested → In Review, changes requested → In Progress, and PR closed without merge → Backlog. Layer 1 workflows must be enabled on the project board — see the adoption issue for setup instructions.
 
-> **Note:** The caller template above contains the 8 standard housekeeping jobs (`auto-assign`, `auto-project`, `issue-defaults`, `project-sync`, `auto-label`, `pr-size`, `branch-validate`, `pr-validate`). The `github-automation` repo's own `housekeeping.yaml` intentionally includes two additional platform-specific jobs not present in this template: `mechanic-dispatch` (dispatches `engineering-agent` on every new issue) and `bulk-assign` (a `workflow_dispatch` utility for bulk-assigning open issues). These are specific to this platform repo and should not be copied into consuming repos.
+> **Note:** The caller template above contains the 8 standard housekeeping jobs (`auto-assign`, `auto-project`, `issue-defaults`, `project-sync`, `auto-label`, `pr-size`, `branch-validate`, `pr-validate`). For repos with Layer 3 agents enabled, add `mechanic-dispatch` after `auto-project` — it dispatches `engineering-agent` on every new issue for instant agent pickup instead of waiting for the next scheduled run. See [mechanic-dispatch](#mechanic-dispatch) below. The `bulk-assign` job in github-automation's own `housekeeping.yaml` is platform-specific and should not be copied.
 
 ### Stale check (separate caller)
 
@@ -282,6 +282,39 @@ The pinned issue must use HTML comment markers to define auto-updated sections:
 ```
 
 Content outside markers is never modified.
+
+### Mechanic dispatch (optional, for Layer 3 repos)
+
+For repos with Layer 3 agents enabled, add this job to `housekeeping.yaml` to trigger the engineering agent immediately when a new issue is added to the board:
+
+```yaml
+  mechanic-dispatch:
+    needs: auto-project
+    if: >-
+      github.event_name == 'issues' && github.event.action == 'opened'
+      && needs.auto-project.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Generate app token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ secrets.MECHANIC_CLIENT_ID }}
+          private-key: ${{ secrets.MECHANIC_PRIVATE_KEY }}
+          owner: nsalab-tmn
+
+      - name: Dispatch engineering agent
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          gh workflow run engineering-agent --repo nsalab-tmn/github-automation -f issue-url="${{ github.event.issue.html_url }}"
+```
+
+Without this, the agent picks up new issues on its next hourly scheduled run. With it, the agent starts within seconds of issue creation.
+
+> **Requires:** `MECHANIC_CLIENT_ID` and `MECHANIC_PRIVATE_KEY` org secrets (already configured). The mechanic App must have `actions: write` permission on `github-automation` to dispatch workflows.
 
 ### 2. Configure secrets
 
