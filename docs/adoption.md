@@ -119,6 +119,10 @@ jobs:
       require-description: true
 ```
 
+> **Note — platform-specific jobs not in this template:** The `github-automation` repo's own `.github/workflows/housekeeping.yaml` includes two additional jobs that are intentional and specific to the platform repo. They are **not part of the standard template above** and should not be added to consuming repos:
+> - **`mechanic-dispatch`**: dispatches `engineering-agent` on every new issue via `workflow_dispatch`, bypassing bot-event suppression (see the *Agent chaining* gotcha in [docs/conventions.md](conventions.md)).
+> - **`bulk-assign`**: a `workflow_dispatch` utility for bulk-assigning all unassigned open issues in github-automation itself.
+
 > **Important:** If using both `auto-label` and `pr-validate`, add `needs: auto-label` to `pr-validate`. Without this, the jobs race and validation may fail because labels haven't been applied yet.
 
 > **Note on `project-sync`, `auto-project`, and Layer 1:** `project-sync` works alongside Layer 1 built-in project workflows. Layer 1 handles the common transitions cleanly (PR linked to issue → In Review, item closed → Done, item reopened → Backlog). `project-sync` handles only what Layer 1 cannot: draft PRs → In Progress, ready_for_review → In Review, review re-requested → In Review, changes requested → In Progress, and PR closed without merge → Backlog. Layer 1 workflows must be enabled on the project board — see the adoption issue for setup instructions.
