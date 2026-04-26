@@ -239,6 +239,17 @@ New issues are automatically added to the project board with Backlog status (com
 
 This replaces the old convention_file-only dedup, which suppressed all findings for a file once any finding existed. Multiple findings per `convention_file` are now allowed as long as they have distinct keys — for example, `repo-documentation.md` can simultaneously have open findings for `no-kb-link` and `template-markers` on the same repo.
 
+**Category labels** — each issue is tagged with a category label based on which convention file triggered the finding:
+
+| `convention_file` | Label |
+|---|---|
+| `repo-documentation.md` | `documentation` |
+| `cicd-workflows.md` | `ci-cd` |
+| `adoption-guide.md` | `ci-cd` |
+| `ansible-conventions.md` | `configuration` |
+
+Category labels are applied alongside `compliance` and `ai-generated` at issue creation time. They enable filtering issues on the project board by drift category. The `documentation` label also determines [auto-merge eligibility](#auto-merge) — docs-only PRs that fix documentation drift qualify for auto-merge when all eligibility criteria are met.
+
 ### Planning agent
 
 Decomposes complex issues into mechanic-sized sub-issues. Manual trigger only.
