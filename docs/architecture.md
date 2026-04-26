@@ -449,6 +449,7 @@ Secrets are org-level (shared across all repos):
 - `BEEKEEPER_CLIENT_ID`, `BEEKEEPER_PRIVATE_KEY` — review-agent (`nsalab-beekeeper`)
 - `APP_CLIENT_ID`, `APP_PRIVATE_KEY` — Layer 2 workflows (`nsalab-automation`)
 - `ANTHROPIC_API_KEY` — Claude API (all Layer 3 workflows)
+- `TRANSPORTER_BOT_TOKEN`, `TRANSPORTER_CHAT_ID` — review-agent notify step (`nsalab-transporter`)
 
 Repo-specific secrets remain per-repo (e.g., `SCAFFOLD_TOKEN` in github-automation).
 
