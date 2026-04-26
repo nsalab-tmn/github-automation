@@ -39,6 +39,7 @@ Separate identities ensure clean audit trails and allow cross-bot interactions (
 | `BEEKEEPER_CLIENT_ID`, `BEEKEEPER_PRIVATE_KEY` | `review-agent` (beekeeper app) |
 | `DOORMAN_CLIENT_ID`, `DOORMAN_PRIVATE_KEY` | `terraform-plan/apply` (doorman app) |
 | `ANTHROPIC_API_KEY` | All Layer 3 Decide phases (Claude API) |
+| `TRANSPORTER_BOT_TOKEN`, `TRANSPORTER_CHAT_ID` | `review-agent` notify step (Telegram, optional) |
 | Backend-specific secrets | Terraform remote state (e.g., `ARM_*` for Azure Blob, `AWS_*` for S3) |
 
 No per-repo secret configuration is needed — org secrets are available to all repos by default. If secret visibility is restricted to specific repos, add new project repos to the allowed list in each secret's repository access settings.
@@ -368,6 +369,30 @@ Workflow schedules are defined in the workflow files themselves and are always a
 | `review-agent` | Weekdays 9am UTC |
 
 Once the project entries exist in config files, the workflows will include the project's repos on their next scheduled run. No separate "enable" step is needed.
+
+### Transporter bot (Telegram notifications)
+
+`nsalab-transporter` is a Telegram bot that sends a notification whenever `nsalab-beekeeper[bot]` posts an APPROVE review on an AI-generated PR. The notification is sent by `scripts/notify-telegram.sh`, called from the `review-agent` workflow's notify step.
+
+> These secrets are **optional**. If either is absent the notify step is skipped and no other `review-agent` functionality is affected.
+
+**Required org secrets**
+
+| Secret | Description |
+|---|---|
+| `TRANSPORTER_BOT_TOKEN` | Bot token obtained from @BotFather |
+| `TRANSPORTER_CHAT_ID` | Numeric ID of the target group, channel, or direct chat |
+
+**Setup steps**
+
+1. Open Telegram and start a chat with **@BotFather**. Send `/newbot`, follow the prompts (set a display name and username), and copy the token it returns.
+2. Add the bot to the target group or channel (or start a direct chat with it), then send any message so the bot has a pending update.
+3. Retrieve the chat ID:
+   ```
+   https://api.telegram.org/bot<TOKEN>/getUpdates
+   ```
+   Find the `chat.id` field in the response. For channels this is a negative number prefixed with `-100`.
+4. Set both values as org-level secrets: **Org Settings > Secrets and variables > Actions > New organization secret**.
 
 ### Verify
 
