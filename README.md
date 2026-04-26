@@ -16,6 +16,10 @@ These workflows are **project-agnostic** — they accept configuration via input
 
 ## Quick start
 
+### Onboarding a new project
+
+See [docs/project-onboarding.md](docs/project-onboarding.md) for the end-to-end guide — from creating a project board to enabling autonomous agents.
+
 ### Using workflows from another repo
 
 See [docs/adoption.md](docs/adoption.md) for the full setup guide with prerequisites, secrets configuration, and caller examples.
@@ -36,7 +40,8 @@ github-automation/
 ├── docs/
 │   ├── adoption.md              How to adopt workflows in your repo
 │   ├── architecture.md          4-layer enforcement architecture
-│   └── conventions.md           Technical reference, workflow catalog
+│   ├── conventions.md           Technical reference, workflow catalog
+│   └── project-onboarding.md   End-to-end project onboarding guide
 ├── prompts/                     Claude API system prompts
 ├── schemas/                     Claude API tool schemas
 ├── scripts/                     Shared scripts for agent + scaffold workflows
