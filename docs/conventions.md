@@ -171,6 +171,7 @@ Each Layer 3 workflow has its own GitHub App identity:
 | `nsalab-beekeeper[bot]` | `review-agent` | Reviews PRs, posts APPROVE/REQUEST_CHANGES |
 | `nsalab-doorman[bot]` | `terraform-plan/apply` | Manages org rulesets and repo settings via Terraform. Bypass actor on org rulesets for template bootstrapping |
 | `nsalab-automation[bot]` | Layer 2 workflows, scaffold/delete | Housekeeping, scaffold/delete workflows (triggers downstream workflows, project board access) |
+| `nsalab-transporter` | `review-agent` (notify step) | Sends Telegram notifications on beekeeper APPROVE |
 
 ## Terraform
 
