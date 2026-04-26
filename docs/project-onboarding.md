@@ -1,6 +1,8 @@
 # Project Onboarding
 
-End-to-end guide for bringing a project from zero to fully autonomous pipeline in the `nsalab-tmn` organization. This document sequences the phases — it tells you **what to do in what order** and links to other docs for how each piece works internally.
+End-to-end guide for bringing a project from zero to fully autonomous pipeline. This document sequences the phases — it tells you **what to do in what order** and links to other docs for how each piece works internally.
+
+> Throughout this guide, `<org>` refers to your GitHub organization name. Replace it with your actual org name in all commands and configuration.
 
 ## Prerequisites
 
@@ -8,32 +10,36 @@ These org-level resources must exist before onboarding a project. They are share
 
 | Prerequisite | How to verify |
 |---|---|
-| `nsalab-tmn` org membership | `gh api user/memberships/orgs/nsalab-tmn` |
+| GitHub org membership | `gh api user/memberships/orgs/<org>` |
 | GitHub Apps installed org-wide | Org Settings > GitHub Apps > Installed GitHub Apps — verify all 5 apps listed below |
 | Org-level secrets configured | Org Settings > Secrets and variables > Actions — verify all secrets listed below |
-| Azure Blob Storage backend | CI handles this via `ARM_*` org secrets |
+| Terraform remote backend | CI handles this via backend-specific secrets (e.g., `ARM_*` for Azure, `AWS_*` for S3) |
 
 ### GitHub Apps
 
-| App | Purpose |
+Five GitHub Apps provide identity separation for different automation layers. Each org creates its own apps — the names below describe the role, not a required naming convention.
+
+| Role | Purpose |
 |---|---|
-| `nsalab-automation` | Layer 2 project board operations (auto-project, project-sync, issue-defaults, scaffold/delete) |
-| `nsalab-librarian` | Layer 3 drift detection — creates compliance issues |
-| `nsalab-mechanic` | Layer 3 engineering agent — checkout, push, PR creation. Requires `workflows: write` permission |
-| `nsalab-beekeeper` | Layer 3 review agent — posts PR reviews (APPROVE/REQUEST_CHANGES) |
-| `nsalab-doorman` | Terraform operations — repo admin, ruleset management. Permanent bypass actor on org rulesets |
+| **automation** | Layer 2 project board operations (auto-project, project-sync, issue-defaults, scaffold/delete) |
+| **librarian** | Layer 3 drift detection — creates compliance issues |
+| **mechanic** | Layer 3 engineering agent — checkout, push, PR creation. Requires `workflows: write` permission |
+| **beekeeper** | Layer 3 review agent — posts PR reviews (APPROVE/REQUEST_CHANGES) |
+| **doorman** | Terraform operations — repo admin, ruleset management. Permanent bypass actor on org rulesets |
+
+Separate identities ensure clean audit trails and allow cross-bot interactions (e.g., the beekeeper can APPROVE PRs created by the mechanic since they are different App identities).
 
 ### Org secrets
 
 | Secret | Used by |
 |---|---|
-| `APP_ID`, `APP_PRIVATE_KEY` | Layer 2 workflows (`nsalab-automation`) |
-| `LIBRARIAN_CLIENT_ID`, `LIBRARIAN_PRIVATE_KEY` | `drift-detect` (`nsalab-librarian`) |
-| `MECHANIC_CLIENT_ID`, `MECHANIC_PRIVATE_KEY` | `engineering-agent` (`nsalab-mechanic`) |
-| `BEEKEEPER_CLIENT_ID`, `BEEKEEPER_PRIVATE_KEY` | `review-agent` (`nsalab-beekeeper`) |
-| `DOORMAN_CLIENT_ID`, `DOORMAN_PRIVATE_KEY` | `terraform-plan/apply` (`nsalab-doorman`) |
+| `APP_ID`, `APP_PRIVATE_KEY` | Layer 2 workflows (automation app) |
+| `LIBRARIAN_CLIENT_ID`, `LIBRARIAN_PRIVATE_KEY` | `drift-detect` (librarian app) |
+| `MECHANIC_CLIENT_ID`, `MECHANIC_PRIVATE_KEY` | `engineering-agent` (mechanic app) |
+| `BEEKEEPER_CLIENT_ID`, `BEEKEEPER_PRIVATE_KEY` | `review-agent` (beekeeper app) |
+| `DOORMAN_CLIENT_ID`, `DOORMAN_PRIVATE_KEY` | `terraform-plan/apply` (doorman app) |
 | `ANTHROPIC_API_KEY` | All Layer 3 Decide phases (Claude API) |
-| `ARM_CLIENT_ID`, `ARM_CLIENT_SECRET`, `ARM_TENANT_ID`, `ARM_SUBSCRIPTION_ID` | Terraform Azure backend |
+| Backend-specific secrets | Terraform remote state (e.g., `ARM_*` for Azure Blob, `AWS_*` for S3) |
 
 No per-repo secret configuration is needed — org secrets are available to all repos by default. If secret visibility is restricted to specific repos, add new project repos to the allowed list in each secret's repository access settings.
 
@@ -65,11 +71,11 @@ Each phase depends on the previous one. Phases 3a (import) and 3b (create) can r
 
 ### Create the project
 
-1. Go to `https://github.com/orgs/nsalab-tmn/projects` > **New project**
+1. Go to `https://github.com/orgs/<org>/projects` > **New project**
 2. Select the **Board** (Kanban) template
 3. The template includes: columns **Backlog**, **Blocked**, **In progress**, **In review**, **Done** + **Priority** and **Size** fields
 
-Note the **project-number** from the URL: `https://github.com/orgs/nsalab-tmn/projects/N` — use `N` in all subsequent configuration.
+Note the **project-number** from the URL: `https://github.com/orgs/<org>/projects/N` — use `N` in all subsequent configuration.
 
 ### Enable Layer 1 automations
 
@@ -98,12 +104,12 @@ Create a test issue in any org repo, add it to the board manually, confirm it la
 
 ### Create the gitops repo
 
-1. Go to `https://github.com/nsalab-tmn/github-automation/issues/new?template=create-gitops-repo.yaml`
+1. Open the **Create GitOps repository** issue form in the github-automation repo
 2. Fill in: **project name** (lowercase, alphanumeric + hyphens), **description**, **justification**
 3. Submit — the `scaffold-gitops` workflow creates a PR modifying `terraform/configs/gitops-projects.yaml`
 4. Wait for `terraform-plan` to post a plan comment on the PR — review that it shows exactly one new `github_repository` resource: `module.gitops_repo["<project>"]`
 5. Merge the PR
-6. `terraform-apply` creates `nsalab-tmn/<project>-gitops` from `template-gitops`
+6. `terraform-apply` creates `<org>/<project>-gitops` from `template-gitops`
 7. Bootstrap job creates a pinned context issue in the new repo
 
 The new gitops repo is immediately functional: TF plan/apply workflows, full housekeeping suite, self-service issue forms for repo create/delete, and engineering documentation — all inherited from `template-gitops`.
@@ -126,27 +132,27 @@ rules:
 
 This allows new repos to receive their initial template commits without failing on missing status checks. Without it, repos created from templates would immediately be in a broken state — no PR could merge because the PR Validation workflow doesn't exist yet in the repo's first commit.
 
-**Doorman bypass** — `nsalab-doorman[bot]` is configured as a permanent bypass actor on both rulesets. This allows the Terraform provider (authenticated as doorman) to push the template content as the initial commit without going through a PR.
+**Doorman bypass** — the doorman app is configured as a permanent bypass actor on both rulesets. This allows the Terraform provider (authenticated as doorman) to push the template content as the initial commit without going through a PR.
 
 > **`do_not_enforce_on_create` tracking bug**: The GitHub Terraform provider (v6.11.1) does not properly track the `do_not_enforce_on_create` field. After Terraform apply, it may silently reset to `false`. Verify after each apply:
 >
 > ```bash
-> gh api orgs/nsalab-tmn/rulesets --jq \
+> gh api orgs/<org>/rulesets --jq \
 >   '.[] | select(.name=="require-pr-validation") | .rules[] | select(.type=="required_status_checks") | .parameters'
 > ```
 >
 > If `do_not_enforce_on_create` is `false`, fix via API:
 >
 > ```bash
-> RULESET_ID=$(gh api orgs/nsalab-tmn/rulesets --jq '.[] | select(.name=="require-pr-validation") | .id')
-> gh api --method PUT "orgs/nsalab-tmn/rulesets/$RULESET_ID" \
+> RULESET_ID=$(gh api orgs/<org>/rulesets --jq '.[] | select(.name=="require-pr-validation") | .id')
+> gh api --method PUT "orgs/<org>/rulesets/$RULESET_ID" \
 >   --input <(jq -n '{rules: [{type: "required_status_checks", parameters: {do_not_enforce_on_create: true, strict_required_status_checks_policy: false, required_status_checks: [{context: "PR Validation"}]}}]}')
 > ```
 
 ### Verify
 
-- Repo exists: `gh repo view nsalab-tmn/<project>-gitops`
-- Pinned issue exists: `gh issue list --repo nsalab-tmn/<project>-gitops --label pinned`
+- Repo exists: `gh repo view <org>/<project>-gitops`
+- Pinned issue exists: `gh issue list --repo <org>/<project>-gitops --label pinned`
 - Settings correct: squash merge only, auto-delete branches, wiki disabled
 - Template content present: TF configs, housekeeping workflows, issue forms
 
@@ -194,7 +200,7 @@ terraform import 'module.repo_labels["existing-repo"].github_issue_labels.this["
 
 New repos (including the knowledge base) are created through the gitops self-service flow:
 
-1. Open the **Create repository** issue form in `nsalab-tmn/<project>-gitops`
+1. Open the **Create repository** issue form in `<org>/<project>-gitops`
 2. Fill in: repo name, description, visibility, justification
 3. The scaffold workflow creates a PR adding the repo to `repos.yaml` with `template: template-generic`
 4. Review terraform plan, merge, terraform apply creates the repo
@@ -215,11 +221,11 @@ After creation, seed the `conventions/` directory with project-specific standard
     └── ...               # Project-specific convention files
 ```
 
-> **Special case — github-automation**: This repo uses its own `docs/` directory as its knowledge base. In the agent configs, set `knowledge-base: nsalab-tmn/github-automation` and `conventions-path: docs`. No separate KB repo needed.
+> **Special case — self-referencing projects**: The github-automation repo itself can use its own `docs/` directory as its knowledge base. In the agent configs, set `knowledge-base: <org>/github-automation` and `conventions-path: docs`. No separate KB repo needed.
 
 ### Verify
 
-- New repos exist with correct settings: `gh repo view nsalab-tmn/<project>-<repo>`
+- New repos exist with correct settings: `gh repo view <org>/<project>-<repo>`
 - Imported repos aligned: `terraform plan` shows no changes
 - Knowledge base has `conventions/` directory
 - Pinned context issues created in each new repo
@@ -302,22 +308,22 @@ See [docs/architecture.md](architecture.md) for the full Layer 3 architecture, G
 
 ### Add project to agent configs
 
-Three config files in `config/` need a project entry. Create a PR in `github-automation` adding the project to all three:
+Three config files in `config/` need a project entry. Create a PR in github-automation adding the project to all three:
 
 **`config/drift-projects.yaml`**:
 
 ```yaml
-project-number: 6  # top-level, shared across all projects on the same board
+project-number: <N>  # top-level, shared across all projects on the same board
 
 projects:
   # existing projects...
   - name: <project>
-    knowledge-base: nsalab-tmn/<project>-knowledge-base
+    knowledge-base: <org>/<project>-knowledge-base
     conventions-path: conventions
     repos:
-      - nsalab-tmn/<project>-knowledge-base
-      - nsalab-tmn/<project>-repo1
-      - nsalab-tmn/<project>-repo2
+      - <org>/<project>-knowledge-base
+      - <org>/<project>-repo1
+      - <org>/<project>-repo2
 ```
 
 **`config/engineering-agent.yaml`** — add the same `projects` entry. The `agent` section at the top contains global settings (schedule, limits, board column names) shared across all projects.
@@ -377,12 +383,12 @@ Once the project entries exist in config files, the workflows will include the p
 |---|---|---|
 | 1 | Board exists with 5 columns | Visit project URL, verify Backlog/Blocked/In progress/In review/Done |
 | 1 | Layer 1 automations enabled | Project Settings > Workflows — all 6 active |
-| 2 | GitOps repo exists | `gh repo view nsalab-tmn/<project>-gitops` |
-| 2 | GitOps pinned issue | `gh issue list --repo nsalab-tmn/<project>-gitops --label pinned` |
+| 2 | GitOps repo exists | `gh repo view <org>/<project>-gitops` |
+| 2 | GitOps pinned issue | `gh issue list --repo <org>/<project>-gitops --label pinned` |
 | 2 | `do_not_enforce_on_create` intact | API check (see Phase 2) |
 | 3 | Imported repos in TF state | `terraform plan` shows no changes |
-| 3 | KB repo has conventions/ | `gh api repos/nsalab-tmn/<project>-knowledge-base/contents/conventions` |
-| 4 | Caller workflows present | `gh api repos/nsalab-tmn/<repo>/contents/.github/workflows` |
+| 3 | KB repo has conventions/ | `gh api repos/<org>/<project>-knowledge-base/contents/conventions` |
+| 4 | Caller workflows present | `gh api repos/<org>/<repo>/contents/.github/workflows` |
 | 4 | Pinned issue has markers | Read pinned issue body, verify HTML comment markers |
 | 4 | Test issue lands on board | Create issue, check board placement |
 | 5 | Project in all 3 agent configs | `grep -l '<project>' config/*.yaml` |
@@ -396,23 +402,23 @@ Once the project entries exist in config files, the workflows will include the p
 
 ### Self-referencing projects
 
-`github-automation` can use its own `docs/` directory as its knowledge base. In the agent configs:
+The github-automation repo can use its own `docs/` directory as its knowledge base. In the agent configs:
 
 ```yaml
 - name: platform
-  knowledge-base: nsalab-tmn/github-automation
+  knowledge-base: <org>/github-automation
   conventions-path: docs
   repos:
-    - nsalab-tmn/github-automation
-    - nsalab-tmn/template-generic
-    - nsalab-tmn/template-gitops
+    - <org>/github-automation
+    - <org>/template-generic
+    - <org>/template-gitops
 ```
 
 No separate knowledge-base repo needed — the conventions are the docs in this repo.
 
 ### Template repos
 
-`template-generic` and `template-gitops` are org-wide resources managed in `github-automation`, not in any project's gitops repo. They can be included in a project's agent config for drift detection and automated fixes, but changes to templates only affect **new** repos created after the change — existing repos need manual sync (see [nsalab-tmn/template-gitops#14](https://github.com/nsalab-tmn/template-gitops/issues/14) for planned mitigation).
+`template-generic` and `template-gitops` are org-wide resources managed in github-automation, not in any project's gitops repo. They can be included in a project's agent config for drift detection and automated fixes, but changes to templates only affect **new** repos created after the change — existing repos need manual sync.
 
 ### Private repo secret visibility
 
