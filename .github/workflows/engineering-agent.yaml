@@ -192,11 +192,35 @@ jobs:
           ISSUE_REPO: ${{ steps.select.outputs.issue_repo }}
           MAX_FILE_COUNT: ${{ steps.config.outputs.max_file_count }}
           MAX_DIFF_LINES: ${{ steps.config.outputs.max_diff_lines }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           cd target-repo
           BRANCH=$(jq -r '.brief.branch_name' ../brief.json)
-          git push origin --delete "$BRANCH" 2>/dev/null || true
-          git checkout -b "$BRANCH"
+
+          # Check if an open PR already exists for this issue
+          EXISTING_PR=$(gh pr list --repo "$ISSUE_REPO" --state open \
+            --json number,headRefName,body \
+            --jq "[.[] | select(.body | test(\"(?i)(closes|fixes|resolves)\\\\s+#${ISSUE_NUMBER}\\\\b\"))] | .[0]" \
+            2>/dev/null || echo "")
+
+          if [[ -n "$EXISTING_PR" && "$EXISTING_PR" != "null" ]]; then
+            EXISTING_BRANCH=$(echo "$EXISTING_PR" | jq -r '.headRefName')
+            EXISTING_PR_NUM=$(echo "$EXISTING_PR" | jq -r '.number')
+            echo "::notice::Reusing existing PR #${EXISTING_PR_NUM} on branch ${EXISTING_BRANCH}"
+            echo "existing_pr=true" >> "$GITHUB_OUTPUT"
+            echo "existing_pr_number=${EXISTING_PR_NUM}" >> "$GITHUB_OUTPUT"
+            BRANCH="$EXISTING_BRANCH"
+
+            # Fetch and checkout the existing branch, then reset to main to apply fresh changes
+            git fetch origin "$BRANCH" || true
+            git checkout -b "$BRANCH" "origin/$BRANCH" 2>/dev/null || git checkout -b "$BRANCH"
+            git reset --hard origin/main
+          else
+            echo "existing_pr=false" >> "$GITHUB_OUTPUT"
+            git push origin --delete "$BRANCH" 2>/dev/null || true
+            git checkout -b "$BRANCH"
+          fi
+
           echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
 
           BRIEF=$(jq -r '.brief | to_entries | map("**\(.key):** \(.value)") | join("\n\n")' ../brief.json)
@@ -233,17 +257,19 @@ jobs:
             echo "changes_made=true" >> "$GITHUB_OUTPUT"
           fi
 
-      # Step 6: Create PR
-      - name: Create pull request
+      # Step 6: Create or update PR
+      - name: Create or update pull request
         id: pr
         if: steps.select.outputs.selected == 'true' && steps.implement.outputs.changes_made == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           ISSUE_REPO: ${{ steps.select.outputs.issue_repo }}
           ISSUE_NUMBER: ${{ steps.select.outputs.issue_number }}
+          EXISTING_PR: ${{ steps.implement.outputs.existing_pr }}
+          EXISTING_PR_NUMBER: ${{ steps.implement.outputs.existing_pr_number }}
         run: |
           cd target-repo
-          BRANCH=$(jq -r '.brief.branch_name' ../brief.json)
+          BRANCH="${{ steps.implement.outputs.branch }}"
           COMMIT_MSG=$(jq -r '.brief.commit_message' ../brief.json)
           OBJECTIVE=$(jq -r '.brief.objective' ../brief.json)
           RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
@@ -251,26 +277,48 @@ jobs:
           git -c user.name="nsalab-mechanic[bot]" \
               -c user.email="nsalab-mechanic[bot]@users.noreply.github.com" \
               commit -m "$COMMIT_MSG"
-          git push origin "$BRANCH"
 
-          gh label create ai-generated --repo "$ISSUE_REPO" \
-            --color "BFD4F2" --description "Created by engineering agent" \
-            2>/dev/null || true
+          if [[ "$EXISTING_PR" == "true" ]]; then
+            # Force-push to update the existing PR branch
+            git push origin "$BRANCH" --force
+            PR_URL="https://github.com/${ISSUE_REPO}/pull/${EXISTING_PR_NUMBER}"
 
-          PR_URL=$(gh pr create --repo "$ISSUE_REPO" --title "$COMMIT_MSG" \
-            --body "## Summary
+            # Add a comment noting the update
+            gh pr comment "$EXISTING_PR_NUMBER" --repo "$ISSUE_REPO" \
+              --body "## Revision pushed
+
           ${OBJECTIVE}
+
+          Updated by [engineering agent](${RUN_URL}) in response to review feedback."
+
+            echo "pr_url=${PR_URL}" >> "$GITHUB_OUTPUT"
+            echo "::notice::Existing PR updated: ${PR_URL}"
+          else
+            git push origin "$BRANCH"
+
+            gh label create ai-generated --repo "$ISSUE_REPO" \
+              --color "BFD4F2" --description "Created by engineering agent" \
+              2>/dev/null || true
+
+            PR_URL=$(gh pr create --repo "$ISSUE_REPO" --title "$COMMIT_MSG" \
+              --body "## Summary
+          ${OBJECTIVE}
+
           Closes #${ISSUE_NUMBER}
+
           ## Type of change
           - [x] Automated fix (engineering agent)
+
           ## Test plan
           - [ ] Review changes match the issue requirements
           - [ ] Verify CI checks pass
+
           ---
           *Created by [engineering agent](${RUN_URL})*" \
-            --label "ai-generated")
-          echo "pr_url=${PR_URL}" >> "$GITHUB_OUTPUT"
-          echo "::notice::PR created: ${PR_URL}"
+              --label "ai-generated")
+            echo "pr_url=${PR_URL}" >> "$GITHUB_OUTPUT"
+            echo "::notice::PR created: ${PR_URL}"
+          fi
 
       # Handle no changes — move to Blocked
       - name: Handle no changes
@@ -298,7 +346,11 @@ jobs:
         run: |
           OBJECTIVE=$(jq -r 'if .brief | type == "object" then .brief.objective // "N/A" else "N/A" end' brief.json 2>/dev/null || echo "N/A")
           if [[ -n "${{ steps.pr.outputs.pr_url }}" ]]; then
-            export STATUS=completed RESULT="PR created: ${{ steps.pr.outputs.pr_url }}"
+            if [[ "${{ steps.implement.outputs.existing_pr }}" == "true" ]]; then
+              export STATUS=completed RESULT="PR updated: ${{ steps.pr.outputs.pr_url }}"
+            else
+              export STATUS=completed RESULT="PR created: ${{ steps.pr.outputs.pr_url }}"
+            fi
           elif [[ "${{ steps.implement.outputs.changes_made }}" == "false" ]]; then
             export STATUS=failed RESULT="Agent made no changes to the codebase"
           else
