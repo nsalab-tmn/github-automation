@@ -316,6 +316,13 @@ Reviews AI-generated PRs against their linked issues. Posts structured GitHub PR
  └──────────────────┘      └──────────────────┘       └──────────────────┘
 ```
 
+**Gather — CI readiness poll**: before fetching CI results, `gather-pr-context.sh` runs a two-phase poll to prevent false `REQUEST_CHANGES` when beekeeper is dispatched immediately after a push.
+
+- **Phase 1** (up to 30s, 5s intervals): polls until at least one CI check appears on the HEAD SHA.
+- **Phase 2** (up to 150s, 15s intervals): polls until all checks reach `completed` status.
+
+Elapsed wait time is recorded as `ci_wait_seconds` and surfaced in the workflow step summary.
+
 **PR selection**: board-driven, finds issues in "In review" status with open `ai-generated` PRs. Skips PRs with failing CI or max review attempts reached. Sorts by linked issue Priority > Age.
 
 **Review decisions**:
