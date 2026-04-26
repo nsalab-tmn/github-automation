@@ -28,6 +28,7 @@ projects:
   - name: cheburnet
     knowledge-base: nsalab-tmn/cheburnet-knowledge-base
     conventions-path: conventions
+    project-number: 6
     repos:
       - nsalab-tmn/cheburnet-knowledge-base
       - nsalab-tmn/cheburnet-vpn
