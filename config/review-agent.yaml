@@ -18,7 +18,7 @@ agent:
     in-review: In review
     done: Done
   # Crawl phase
-  auto-merge: false
+  auto-merge: true
   confidence-threshold: high
 
 projects:

@@ -17,7 +17,7 @@ on:
         default: false
 
 permissions:
-  contents: read
+  contents: write
   issues: write
   pull-requests: write
 
@@ -100,7 +100,8 @@ jobs:
           python3 ./scripts/review-pr.py pr-context.json prompts/review-brief.md schemas/review-pr.json > review.json
           echo "decision=$(jq -r '.decision' review.json)" >> "$GITHUB_OUTPUT"
           echo "confidence=$(jq -r '.confidence' review.json)" >> "$GITHUB_OUTPUT"
-          echo "::notice::Decision: $(jq -r '.decision' review.json), Confidence: $(jq -r '.confidence' review.json)"
+          echo "auto_merge=$(jq -r '.auto_merge_eligible' review.json)" >> "$GITHUB_OUTPUT"
+          echo "::notice::Decision: $(jq -r '.decision' review.json), Confidence: $(jq -r '.confidence' review.json), Auto-merge eligible: $(jq -r '.auto_merge_eligible' review.json)"
 
       - name: Post review
         if: steps.select.outputs.selected == 'true' && inputs.dry-run != true
@@ -116,6 +117,17 @@ jobs:
           RUN_NUMBER: ${{ github.run_number }}
         run: ./scripts/post-review.sh
 
+      - name: Auto-merge eligible PR
+        id: auto-merge
+        if: steps.select.outputs.selected == 'true' && inputs.dry-run != true && steps.review.outputs.decision == 'approve' && steps.review.outputs.auto_merge == 'true' && steps.config.outputs.auto_merge == 'True'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_REPO: ${{ steps.select.outputs.pr_repo }}
+          PR_NUMBER: ${{ steps.select.outputs.pr_number }}
+        run: |
+          echo "::notice::Auto-merge eligible — squash-merging PR #${PR_NUMBER} in ${PR_REPO}"
+          gh pr merge "$PR_NUMBER" --repo "$PR_REPO" --squash || echo "::warning::Auto-merge failed (conflicts or failing checks), skipping"
+
       - name: Notify Telegram on approve
         id: notify-telegram
         if: steps.select.outputs.selected == 'true' && inputs.dry-run != true && steps.review.outputs.decision == 'approve'
@@ -127,6 +139,7 @@ jobs:
           PR_NUMBER: ${{ steps.select.outputs.pr_number }}
           ISSUE_NUMBER: ${{ steps.select.outputs.issue_number }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          AUTO_MERGED: ${{ steps.auto-merge.outcome == 'success' && steps.review.outputs.auto_merge == 'true' }}
         run: bash scripts/notify-telegram.sh
 
       - name: Session summary
