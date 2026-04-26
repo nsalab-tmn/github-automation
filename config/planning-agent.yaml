@@ -15,3 +15,12 @@ projects:
       - nsalab-tmn/cheburnet-router
       - nsalab-tmn/cheburnet-gitops
       - nsalab-tmn/cheburnet-intelligence
+
+  - name: github-maintenance
+    knowledge-base: nsalab-tmn/github-automation
+    conventions-path: docs
+    project-number: 7
+    repos:
+      - nsalab-tmn/github-automation
+      - nsalab-tmn/template-gitops
+      - nsalab-tmn/template-generic
