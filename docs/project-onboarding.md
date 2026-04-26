@@ -73,7 +73,8 @@ Each phase depends on the previous one. Phases 3a (import) and 3b (create) can r
 
 1. Go to `https://github.com/orgs/<org>/projects` > **New project**
 2. Select the **Board** (Kanban) template
-3. The template includes: columns **Backlog**, **Blocked**, **In progress**, **In review**, **Done** + **Priority** and **Size** fields
+3. The template includes: columns **Backlog**, **Ready**, **In progress**, **In review**, **Done** + **Priority** and **Size** fields
+4. Rename the **Ready** column to **Blocked** — click the column header, edit the name. The agents use `Blocked` for issues that need human attention (`needs-triage` label)
 
 Note the **project-number** from the URL: `https://github.com/orgs/<org>/projects/N` — use `N` in all subsequent configuration.
 
