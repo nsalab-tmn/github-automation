@@ -97,3 +97,14 @@ The brief is the implementing agent's only context. Make it actionable:
    It cannot call GitHub API, edit issues, change project board settings, create
    labels, or perform any action outside the file system. If the fix requires any
    of these, set `workable: false` with blocker type `needs_human_decision`.
+
+## Cross-repo routing
+
+When `cross_repo_dependency` is the blocker, also determine the routing action:
+- `transfer` — when ALL work belongs in another repo and nothing needs to change in the current repo. The issue will be moved there.
+- `create_blocker` — when the current repo's fix depends on another repo being fixed first. A blocking issue will be created in the target repo.
+- `none` — when the dependency is too complex or requires human judgment.
+
+For `create_blocker`, write `blocker_body` as a self-contained issue — the mechanic in the target repo must understand what to fix without seeing the original issue. Include: what to fix, why, acceptance criteria, and key files.
+
+Always populate `target_repo` (full `owner/name`) when `cross_repo_action` is `transfer` or `create_blocker`.
