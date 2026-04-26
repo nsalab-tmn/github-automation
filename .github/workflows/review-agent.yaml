@@ -3,7 +3,7 @@ run-name: "[${{github.run_number}}] Review agent [${{github.event_name}}]"
 
 on:
   schedule:
-    - cron: '0 9 * * 1-5'  # weekdays 9am UTC, 1h after engineering-agent
+    - cron: '30 * * * *'
   workflow_dispatch:
     inputs:
       pr-url:

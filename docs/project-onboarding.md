@@ -365,8 +365,8 @@ Workflow schedules are defined in the workflow files themselves and are always a
 | Workflow | Schedule |
 |---|---|
 | `drift-detect` | Monday 10am UTC |
-| `engineering-agent` | Weekdays 8am UTC (or manual only during crawl phase) |
-| `review-agent` | Weekdays 9am UTC |
+| `engineering-agent` | Hourly (:00 UTC) |
+| `review-agent` | Hourly (:30 UTC) |
 
 Once the project entries exist in config files, the workflows will include the project's repos on their next scheduled run. No separate "enable" step is needed.
 
