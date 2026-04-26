@@ -40,6 +40,9 @@ ${SUMMARY}
 <a href=\"${RUN_URL:-}\">View review run</a>"
 fi
 
+# Convert markdown backticks to HTML <code> tags for Telegram
+TELEGRAM_MESSAGE=$(echo "$TELEGRAM_MESSAGE" | sed 's/`\([^`]*\)`/<code>\1<\/code>/g')
+
 PAYLOAD=$(jq -n \
   --arg chat_id "$TELEGRAM_CHAT_ID" \
   --arg text "$TELEGRAM_MESSAGE" \
