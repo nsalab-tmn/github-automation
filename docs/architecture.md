@@ -248,7 +248,7 @@ This replaces the old convention_file-only dedup, which suppressed all findings 
 | `adoption-guide.md` | `ci-cd` |
 | `ansible-conventions.md` | `configuration` |
 
-Category labels are applied alongside `compliance` and `ai-generated` at issue creation time. They enable filtering issues on the project board by drift category. The `documentation` label also determines [auto-merge eligibility](#auto-merge) — docs-only PRs that fix documentation drift qualify for auto-merge when all eligibility criteria are met.
+Category labels are applied alongside `compliance` and `ai-generated` at issue creation time. They enable filtering issues on the project board by drift category. The `documentation` and `compliance` labels also determine [auto-merge eligibility](#auto-merge) — docs-only PRs with the `documentation` label, and configuration/workflow-caller PRs with the `compliance` label, qualify for auto-merge when all eligibility criteria are met.
 
 ### Planning agent
 
@@ -351,7 +351,9 @@ Elapsed wait time is recorded as `ci_wait_seconds` and surfaced in the workflow 
 
 When all four conditions hold — `decision=approve`, `confidence=high`, `auto_merge_eligible=true`, and `auto-merge: true` in `config/review-agent.yaml` — the review agent merges the PR without waiting for human action.
 
-**Eligibility criteria** (`auto_merge_eligible=true`): PR touches only docs-only files (`docs/**`, `*.md`, `prompts/*.md`), has the `documentation` label, and contains no workflow, script, or Terraform changes.
+**Eligibility criteria** (`auto_merge_eligible=true`): one of two paths must hold, in addition to `decision=approve`, `confidence=high`, and no blocking issues found:
+- **Path A (documentation)**: PR has the `documentation` label AND touches only docs-only files (`docs/**`, `*.md`, `prompts/*.md`) — no workflow, script, terraform, or config files.
+- **Path B (compliance)**: PR has the `compliance` label AND changes are limited to configuration files, workflow callers, or documentation — but NOT `reusable-*.yaml` files, NOT files under `scripts/`, NOT files under `terraform/modules/`.
 
 **Merge flow**: polls `mergeStateStatus` via GraphQL (up to 3 minutes) until the PR reaches a mergeable state, then performs a squash merge.
 
