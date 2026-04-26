@@ -167,6 +167,7 @@ Each Layer 3 workflow has its own GitHub App identity:
 | Bot | Workflow | Role |
 |-----|----------|------|
 | `nsalab-librarian[bot]` | `drift-detect` | Finds convention drift, creates compliance issues |
+| `nsalab-fortune[bot]` | `planning-agent` | Decomposes complex issues into mechanic-sized sub-issues |
 | `nsalab-mechanic[bot]` | `engineering-agent` | Implements fixes, creates PRs |
 | `nsalab-beekeeper[bot]` | `review-agent` | Reviews PRs, posts APPROVE/REQUEST_CHANGES |
 | `nsalab-doorman[bot]` | `terraform-plan/apply` | Manages org rulesets and repo settings via Terraform. Bypass actor on org rulesets for template bootstrapping |
