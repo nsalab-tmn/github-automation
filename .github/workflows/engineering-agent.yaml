@@ -193,7 +193,10 @@ jobs:
           BRANCH=$(jq -r '.brief.branch_name' ../brief.json)
 
           # Check if an open PR already exists for this issue
-          EXISTING_PR=$(gh pr list --repo "$ISSUE_REPO" --search "Closes #${ISSUE_NUMBER}" --state open --json number,headRefName --jq '.[0]' 2>/dev/null || echo "")
+          EXISTING_PR=$(gh pr list --repo "$ISSUE_REPO" --state open \
+            --json number,headRefName,body \
+            --jq "[.[] | select(.body | test(\"(?i)(closes|fixes|resolves)\\\\s+#${ISSUE_NUMBER}\\\\b\"))] | .[0]" \
+            2>/dev/null || echo "")
 
           if [[ -n "$EXISTING_PR" && "$EXISTING_PR" != "null" ]]; then
             EXISTING_BRANCH=$(echo "$EXISTING_PR" | jq -r '.headRefName')
