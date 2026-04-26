@@ -1,103 +1,114 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# select-issue.sh — Select the highest-priority issue from the project board
+# select-issue.sh — Select the highest-priority issue across all project boards
 #
-# Only selects issues that are on the board. Paginates through all items.
-# Ranks by: Priority > Size > Type > Age (oldest first)
+# Paginates through all items on each board, merges candidates, then ranks by:
+# Priority > Size > Type > Age (oldest first)
 #
 # Required environment variables:
 #   GH_TOKEN          — token with project and issue access
-#   PROJECT_NUMBER    — GitHub Projects V2 project number
+#   PROJECT_NUMBERS   — space-separated list of GitHub Projects V2 numbers
 #   ORG               — GitHub organization name
 #   EXCLUDED_LABELS   — JSON array of labels to exclude
 #   ELIGIBLE_STATUSES — JSON array of eligible board statuses
 #   MAX_ATTEMPTS      — max failed attempts before skipping
 #
 # Optional:
+#   PROJECT_NUMBER    — single board number (fallback if PROJECT_NUMBERS not set)
 #   REQUIRE_LABELS    — JSON array of labels ALL candidates must have
 
 ORG="${ORG:?ORG env var required}"
-PROJECT_NUMBER="${PROJECT_NUMBER:?PROJECT_NUMBER env var required}"
+PROJECT_NUMBERS="${PROJECT_NUMBERS:-${PROJECT_NUMBER:-}}"
+if [[ -z "$PROJECT_NUMBERS" ]]; then
+  echo "::error::Either PROJECT_NUMBERS or PROJECT_NUMBER must be set" >&2
+  exit 1
+fi
 EXCLUDED_LABELS="${EXCLUDED_LABELS:-'["pinned","needs-triage","stale"]'}"
 ELIGIBLE_STATUSES="${ELIGIBLE_STATUSES:-'["Backlog","In progress"]'}"
 REQUIRE_LABELS="${REQUIRE_LABELS:-'[]'}"
 MAX_ATTEMPTS="${MAX_ATTEMPTS:-3}"
 
-echo "::notice::Selecting issue from project #${PROJECT_NUMBER}" >&2
-echo "::notice::Required labels: ${REQUIRE_LABELS}" >&2
+ALL_ITEMS_FILE=$(mktemp)
+echo "[]" > "$ALL_ITEMS_FILE"
+CANDIDATES_FILE=$(mktemp)
+trap 'rm -f "$ALL_ITEMS_FILE" "$CANDIDATES_FILE"' EXIT
 
-# Paginate through all board items (write to temp file to avoid arg-list-too-long)
-ITEMS_FILE=$(mktemp)
-echo "[]" > "$ITEMS_FILE"
-HAS_NEXT="true"
-CURSOR=""
+for PROJ_NUM in $PROJECT_NUMBERS; do
+  echo "::notice::Fetching items from project #${PROJ_NUM}" >&2
 
-while [[ "$HAS_NEXT" == "true" ]]; do
-  if [[ -z "$CURSOR" ]]; then
-    CURSOR_ARG=""
-  else
-    CURSOR_ARG=", after: \"${CURSOR}\""
-  fi
+  ITEMS_FILE=$(mktemp)
+  echo "[]" > "$ITEMS_FILE"
+  HAS_NEXT="true"
+  CURSOR=""
 
-  # Write API response to file (can be large — 100 items with full bodies)
-  PAGE_FILE=$(mktemp)
-  gh api graphql -f query="
-    query(\$org: String!, \$number: Int!) {
-      organization(login: \$org) {
-        projectV2(number: \$number) {
-          items(first: 100${CURSOR_ARG}) {
-            pageInfo { hasNextPage endCursor }
-            nodes {
-              id
-              status: fieldValueByName(name: \"Status\") {
-                ... on ProjectV2ItemFieldSingleSelectValue { name }
-              }
-              priority: fieldValueByName(name: \"Priority\") {
-                ... on ProjectV2ItemFieldSingleSelectValue { name }
-              }
-              size: fieldValueByName(name: \"Size\") {
-                ... on ProjectV2ItemFieldSingleSelectValue { name }
-              }
-              content {
-                ... on Issue {
-                  id
-                  number
-                  title
-                  body
-                  createdAt
-                  state
-                  issueType { name }
-                  assignees(first: 10) { nodes { login } }
-                  labels(first: 20) { nodes { name } }
-                  repository { nameWithOwner }
+  while [[ "$HAS_NEXT" == "true" ]]; do
+    if [[ -z "$CURSOR" ]]; then
+      CURSOR_ARG=""
+    else
+      CURSOR_ARG=", after: \"${CURSOR}\""
+    fi
+
+    PAGE_FILE=$(mktemp)
+    gh api graphql -f query="
+      query(\$org: String!, \$number: Int!) {
+        organization(login: \$org) {
+          projectV2(number: \$number) {
+            items(first: 100${CURSOR_ARG}) {
+              pageInfo { hasNextPage endCursor }
+              nodes {
+                id
+                status: fieldValueByName(name: \"Status\") {
+                  ... on ProjectV2ItemFieldSingleSelectValue { name }
+                }
+                priority: fieldValueByName(name: \"Priority\") {
+                  ... on ProjectV2ItemFieldSingleSelectValue { name }
+                }
+                size: fieldValueByName(name: \"Size\") {
+                  ... on ProjectV2ItemFieldSingleSelectValue { name }
+                }
+                content {
+                  ... on Issue {
+                    id
+                    number
+                    title
+                    body
+                    createdAt
+                    state
+                    issueType { name }
+                    assignees(first: 10) { nodes { login } }
+                    labels(first: 20) { nodes { name } }
+                    repository { nameWithOwner }
+                  }
                 }
               }
             }
           }
         }
       }
-    }
-  " -f org="$ORG" -F number="$PROJECT_NUMBER" > "$PAGE_FILE"
+    " -f org="$ORG" -F number="$PROJ_NUM" > "$PAGE_FILE"
 
-  # Append nodes and extract pagination info (all from file, never shell vars)
-  jq '.data.organization.projectV2.items.nodes' "$PAGE_FILE" > "${ITEMS_FILE}.nodes"
-  jq --slurpfile n "${ITEMS_FILE}.nodes" '. + $n[0]' "$ITEMS_FILE" > "${ITEMS_FILE}.tmp" && mv "${ITEMS_FILE}.tmp" "$ITEMS_FILE"
-  HAS_NEXT=$(jq -r '.data.organization.projectV2.items.pageInfo.hasNextPage' "$PAGE_FILE")
-  CURSOR=$(jq -r '.data.organization.projectV2.items.pageInfo.endCursor' "$PAGE_FILE")
-  rm -f "$PAGE_FILE" "${ITEMS_FILE}.nodes"
+    jq '.data.organization.projectV2.items.nodes' "$PAGE_FILE" > "${ITEMS_FILE}.nodes"
+    jq --slurpfile n "${ITEMS_FILE}.nodes" '. + $n[0]' "$ITEMS_FILE" > "${ITEMS_FILE}.tmp" && mv "${ITEMS_FILE}.tmp" "$ITEMS_FILE"
+    HAS_NEXT=$(jq -r '.data.organization.projectV2.items.pageInfo.hasNextPage' "$PAGE_FILE")
+    CURSOR=$(jq -r '.data.organization.projectV2.items.pageInfo.endCursor' "$PAGE_FILE")
+    rm -f "$PAGE_FILE" "${ITEMS_FILE}.nodes"
 
-  COUNT=$(jq 'length' "$ITEMS_FILE")
-  echo "::notice::  Fetched ${COUNT} items so far (hasNextPage: ${HAS_NEXT})" >&2
+    COUNT=$(jq 'length' "$ITEMS_FILE")
+    echo "::notice::  Fetched ${COUNT} items so far from #${PROJ_NUM} (hasNextPage: ${HAS_NEXT})" >&2
+  done
+
+  # Tag items with source project number and merge into ALL_ITEMS_FILE
+  TAGGED_FILE=$(mktemp)
+  jq --argjson pn "$PROJ_NUM" 'map(. + {_project_number: $pn})' "$ITEMS_FILE" > "$TAGGED_FILE"
+  jq --slurpfile tagged "$TAGGED_FILE" '. + $tagged[0]' "$ALL_ITEMS_FILE" > "${ALL_ITEMS_FILE}.tmp" && mv "${ALL_ITEMS_FILE}.tmp" "$ALL_ITEMS_FILE"
+  rm -f "$ITEMS_FILE" "$TAGGED_FILE"
 done
 
-TOTAL=$(jq 'length' "$ITEMS_FILE")
-echo "::notice::Total board items: ${TOTAL}" >&2
+TOTAL=$(jq 'length' "$ALL_ITEMS_FILE")
+echo "::notice::Total board items across all projects: ${TOTAL}" >&2
 
 # Filter and rank all candidates (output sorted array to file)
-CANDIDATES_FILE=$(mktemp)
-trap 'rm -f "$ITEMS_FILE" "$CANDIDATES_FILE"' EXIT
-
 jq \
   --argjson excluded "$EXCLUDED_LABELS" \
   --argjson eligible "$ELIGIBLE_STATUSES" \
@@ -140,15 +151,16 @@ jq \
       size: ((.size // {}).name // ""),
       issue_type: (.content.issueType.name // ""),
       labels: [.content.labels.nodes[].name],
-      assignees: [.content.assignees.nodes[].login]
+      assignees: [.content.assignees.nodes[].login],
+      project_number: ._project_number
     }]
-' "$ITEMS_FILE" > "$CANDIDATES_FILE"
+' "$ALL_ITEMS_FILE" > "$CANDIDATES_FILE"
 
 CANDIDATE_COUNT=$(jq 'length' "$CANDIDATES_FILE")
 echo "::notice::${CANDIDATE_COUNT} candidate(s) after filtering" >&2
 
 if [[ "$CANDIDATE_COUNT" -eq 0 ]]; then
-  echo "::notice::No eligible issues found on the board" >&2
+  echo "::notice::No eligible issues found on any board" >&2
   echo ""
   exit 0
 fi

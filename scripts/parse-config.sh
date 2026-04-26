@@ -19,6 +19,13 @@ with open('${CONFIG_FILE}') as f:
 agent = config['agent']
 print(f\"project_number={agent['project-number']}\")
 
+# Collect all unique project board numbers (per-project overrides + top-level default)
+board_nums = set([agent['project-number']])
+for proj in config.get('projects', []):
+    if 'project-number' in proj:
+        board_nums.add(proj['project-number'])
+print(f\"project_numbers={' '.join(str(n) for n in sorted(board_nums))}\")
+
 # Optional fields with defaults
 print(f\"max_attempts={agent.get('max-attempts', 3)}\")
 print(f\"max_review_attempts={agent.get('max-review-attempts', 3)}\")
