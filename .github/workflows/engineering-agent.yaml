@@ -183,6 +183,7 @@ jobs:
           export STATUS=not-workable BRIEF="$OBJECTIVE" RESULT="Issue deemed not workable" BLOCKERS
           ./scripts/record-attempt.sh
           ./scripts/mark-needs-triage.sh
+          ./scripts/dispatch-planner.sh
           echo "::warning::Issue deemed not workable — moved to Blocked with needs-triage"
 
       # Transfer issue to target repo when all work belongs there
