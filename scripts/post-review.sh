@@ -153,5 +153,6 @@ fi
 
 # Dispatch engineering agent to rework the issue
 ISSUE_URL="https://github.com/${PR_REPO}/issues/${ISSUE_NUMBER}"
-gh workflow run engineering-agent.yaml --field issue-url="$ISSUE_URL"
+gh workflow run engineering-agent --repo nsalab-tmn/github-automation \
+  -f issue-url="$ISSUE_URL"
 echo "::notice::Dispatched engineering-agent for issue #${ISSUE_NUMBER}" >&2
