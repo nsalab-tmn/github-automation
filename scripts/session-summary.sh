@@ -19,6 +19,7 @@ DRY_RUN="${DRY_RUN:-false}"
 SELECTED="${SELECTED:-false}"
 RESULT_FILE="${RESULT_FILE:-}"
 RESULT_FIELDS="${RESULT_FIELDS:-}"
+CI_WAIT_SECONDS="${CI_WAIT_SECONDS:-}"
 
 if [[ "$DRY_RUN" == "true" ]]; then
   echo "## ${AGENT_NAME} — DRY RUN" >> "$GITHUB_STEP_SUMMARY"
@@ -37,6 +38,10 @@ fi
 
 if [[ -n "${SUMMARY_EXTRA:-}" ]]; then
   echo "${SUMMARY_EXTRA}" >> "$GITHUB_STEP_SUMMARY"
+fi
+
+if [[ -n "${CI_WAIT_SECONDS}" ]]; then
+  echo "- **CI wait:** ${CI_WAIT_SECONDS}s" >> "$GITHUB_STEP_SUMMARY"
 fi
 
 if [[ -n "$RESULT_FILE" && -f "$RESULT_FILE" ]]; then
