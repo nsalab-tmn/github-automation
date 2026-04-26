@@ -390,6 +390,7 @@ All Layer 3 workflows share a common library of scripts:
 | `record-attempt.sh` | Post structured attempt tracking comment |
 | `close-resolved.sh` | Close issue with evidence comment |
 | `session-summary.sh` | Write step summary to workflow output |
+| `notify-telegram.sh` | Send Telegram notification via Bot API |
 
 Workflow-specific scripts follow the Gather → Decide → Execute pattern:
 

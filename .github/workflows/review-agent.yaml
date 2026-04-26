@@ -116,6 +116,19 @@ jobs:
           RUN_NUMBER: ${{ github.run_number }}
         run: ./scripts/post-review.sh
 
+      - name: Notify Telegram on approve
+        id: notify-telegram
+        if: steps.select.outputs.selected == 'true' && inputs.dry-run != true && steps.review.outputs.decision == 'approve'
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TRANSPORTER_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TRANSPORTER_CHAT_ID }}
+          REVIEW_FILE: review.json
+          PR_REPO: ${{ steps.select.outputs.pr_repo }}
+          PR_NUMBER: ${{ steps.select.outputs.pr_number }}
+          ISSUE_NUMBER: ${{ steps.select.outputs.issue_number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bash scripts/notify-telegram.sh
+
       - name: Session summary
         if: always()
         env:
