@@ -22,7 +22,7 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: engineering-agent
+  group: engineering-agent-${{ github.event_name }}
   cancel-in-progress: false
 
 jobs:
