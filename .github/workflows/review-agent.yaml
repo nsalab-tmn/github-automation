@@ -181,3 +181,4 @@ jobs:
             "**Decision:** \(.decision)\n**Confidence:** \(.confidence)\n**Summary:** \(.summary)\n\n- Addresses issue: \(.addresses_issue)\n- Follows conventions: \(.follows_conventions)\n- Minimal change: \(.minimal_change)\n- Auto-merge eligible: \(.auto_merge_eligible)"
           CI_WAIT_SECONDS: ${{ steps.gather.outputs.ci_wait_seconds }}
         run: ./scripts/session-summary.sh
+

@@ -433,3 +433,4 @@ jobs:
           RESULT_FIELDS: >-
             "**Workable:** \(.workable)\n**Confidence:** \(.confidence)\n**Summary:** \(if .brief | type == \"object\" then .brief.objective // \"N/A\" else \"N/A\" end)"
         run: ./scripts/session-summary.sh
+
