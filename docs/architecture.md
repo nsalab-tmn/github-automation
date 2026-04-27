@@ -276,6 +276,8 @@ Decomposes complex issues into mechanic-sized sub-issues. Manual trigger only.
 
 Each sub-issue body is self-contained — it includes all context the mechanic needs (acceptance criteria, key files, conventions, dependencies) because the mechanic compiles its brief from the issue body alone.
 
+**Identity**: nsalab-fortune[bot] (FORTUNE_CLIENT_ID / FORTUNE_PRIVATE_KEY).
+
 ### Engineering agent
 
 Picks issues from the project board backlog and implements them autonomously. Three-stage pipeline:
