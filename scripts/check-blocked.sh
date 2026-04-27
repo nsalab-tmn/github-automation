@@ -68,6 +68,7 @@ for PROJECT_NUMBER in $PROJECT_NUMBERS; do
                 }
               }
               content {
+                __typename
                 ... on Issue {
                   id
                   number
@@ -81,7 +82,7 @@ for PROJECT_NUMBER in $PROJECT_NUMBERS; do
         }
       }
     }
-  ' -f projectId="$PROJECT_ID" | jq --arg s "$STATUS_BLOCKED" '[.data.node.items.nodes[] | select(.fieldValueByName.name == $s) | select(.content != null)]')
+  ' -f projectId="$PROJECT_ID" | jq --arg s "$STATUS_BLOCKED" '[.data.node.items.nodes[] | select(.fieldValueByName.name == $s) | select(.content != null and (.content.__typename // "") == "Issue")]')
 
   BLOCKED_COUNT=$(echo "$BLOCKED_ITEMS" | jq 'length')
   echo "::notice::Found ${BLOCKED_COUNT} blocked item(s) on project #${PROJECT_NUMBER}" >&2

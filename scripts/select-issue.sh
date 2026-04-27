@@ -70,6 +70,7 @@ for PROJ_NUM in $PROJECT_NUMBERS; do
                   ... on ProjectV2ItemFieldSingleSelectValue { name }
                 }
                 content {
+                  __typename
                   ... on Issue {
                     id
                     number
@@ -110,6 +111,11 @@ done
 TOTAL=$(jq 'length' "$ALL_ITEMS_FILE")
 echo "::notice::Total board items across all projects: ${TOTAL}" >&2
 
+NON_ISSUE_COUNT=$(jq '[.[] | select(.content == null or (.content.__typename // "") != "Issue")] | length' "$ALL_ITEMS_FILE")
+if [[ "$NON_ISSUE_COUNT" -gt 0 ]]; then
+  echo "::notice::Skipping ${NON_ISSUE_COUNT} non-Issue item(s) (draft PRs, pull requests, or archived items)" >&2
+fi
+
 # Filter and rank all candidates (output sorted array to file)
 jq \
   --argjson excluded "$EXCLUDED_LABELS" \
@@ -126,6 +132,7 @@ jq \
 
   map(select(
       .content != null
+      and (.content.__typename // "") == "Issue"
       and .content.number != null
       and .content.state == "OPEN"
       and ((.status // {}).name // "" as $s | $eligible | index($s) != null)
