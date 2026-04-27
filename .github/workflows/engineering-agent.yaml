@@ -287,14 +287,18 @@ jobs:
           DIFF_LINES=$(git diff --cached --stat | tail -1 | grep -oP '\d+ insertion' | grep -oP '\d+' || echo "0")
 
           if [[ "$CHANGED_FILES" -gt "$MAX_FILE_COUNT" ]]; then
-            echo "::error::Changed ${CHANGED_FILES} files (max: ${MAX_FILE_COUNT})"
+            echo "::warning::Changed ${CHANGED_FILES} files (max: ${MAX_FILE_COUNT}) — resetting"
             git reset HEAD >/dev/null
-            exit 1
+            echo "changes_made=false" >> "$GITHUB_OUTPUT"
+            echo "limit_exceeded=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
           if [[ "$DIFF_LINES" -gt "$MAX_DIFF_LINES" ]]; then
-            echo "::error::Diff is ${DIFF_LINES} lines (max: ${MAX_DIFF_LINES})"
+            echo "::warning::Diff is ${DIFF_LINES} lines (max: ${MAX_DIFF_LINES}) — resetting"
             git reset HEAD >/dev/null
-            exit 1
+            echo "changes_made=false" >> "$GITHUB_OUTPUT"
+            echo "limit_exceeded=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
           if git diff --cached --quiet; then
             echo "changes_made=false" >> "$GITHUB_OUTPUT"
@@ -405,7 +409,11 @@ jobs:
               export STATUS=completed RESULT="PR created: ${{ steps.pr.outputs.pr_url }}"
             fi
           elif [[ "${{ steps.implement.outputs.changes_made }}" == "false" ]]; then
-            export STATUS=failed RESULT="Agent made no changes to the codebase"
+            if [[ "${{ steps.implement.outputs.limit_exceeded }}" == "true" ]]; then
+              export STATUS=failed RESULT="Limit exceeded: implementation changed too many files/lines"
+            else
+              export STATUS=failed RESULT="Agent made no changes to the codebase"
+            fi
           else
             export STATUS=failed RESULT="Implementation did not produce a PR"
           fi
