@@ -119,12 +119,15 @@ for PROJ_NUM in $PROJECT_NUMBERS; do
   rm -f "$ITEMS_FILE" "$TAGGED_FILE"
 done
 
+# Flatten in case nested arrays crept in from pagination/merge
+jq 'flatten' "$ALL_ITEMS_FILE" > "${ALL_ITEMS_FILE}.tmp" && mv "${ALL_ITEMS_FILE}.tmp" "$ALL_ITEMS_FILE"
 TOTAL=$(jq 'length' "$ALL_ITEMS_FILE")
 echo "::notice::Total board items across all projects: ${TOTAL}" >&2
 
 # Filter to issues in eligible statuses (these are the issues linked to PRs)
 jq --argjson eligible "$ELIGIBLE_STATUSES" \
    --argjson allowed "$ALLOWED_REPOS" '
+  [.[] | select(type == "object")] |
   map(select(
     (.content | type) == "object"
     and .content.number != null
