@@ -107,8 +107,8 @@ for PROJ_NUM in $PROJECT_NUMBERS; do
   rm -f "$ITEMS_FILE" "$TAGGED_FILE"
 done
 
-# Flatten in case nested arrays crept in from pagination/merge
-jq 'flatten' "$ALL_ITEMS_FILE" > "${ALL_ITEMS_FILE}.tmp" && mv "${ALL_ITEMS_FILE}.tmp" "$ALL_ITEMS_FILE"
+# Flatten and filter to only objects (guard against nested arrays and non-issue items)
+jq '[flatten[] | select(type == "object")]' "$ALL_ITEMS_FILE" > "${ALL_ITEMS_FILE}.tmp" && mv "${ALL_ITEMS_FILE}.tmp" "$ALL_ITEMS_FILE"
 TOTAL=$(jq 'length' "$ALL_ITEMS_FILE")
 echo "::notice::Total board items across all projects: ${TOTAL}" >&2
 
@@ -126,7 +126,6 @@ jq \
   def type_rank:
     if . == "Bug" then 0 elif . == "Task" then 1 elif . == "Feature" then 2 else 99 end;
 
-  [.[] | select(type == "object")] |
   map(select(
       (.content | type) == "object"
       and .content.number != null
