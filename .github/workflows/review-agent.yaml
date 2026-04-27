@@ -22,7 +22,7 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: review-agent
+  group: review-agent-${{ github.event_name }}
   cancel-in-progress: false
 
 jobs:

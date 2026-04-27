@@ -16,6 +16,10 @@ permissions:
   contents: read
   issues: write
 
+concurrency:
+  group: drift-detect-${{ github.event_name }}
+  cancel-in-progress: false
+
 jobs:
   drift-detect:
     runs-on: ubuntu-latest
