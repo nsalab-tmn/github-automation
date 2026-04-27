@@ -73,15 +73,23 @@ jobs:
           ALLOWED_REPOS: ${{ steps.config.outputs.allowed_repos }}
           MAX_ATTEMPTS: ${{ steps.config.outputs.max_attempts }}
           MANUAL_ISSUE_URL: ${{ inputs.issue-url }}
+          PROJECTS_JSON: ${{ steps.config.outputs.projects }}
         run: |
           if [[ -n "$MANUAL_ISSUE_URL" ]]; then
             REPO=$(echo "$MANUAL_ISSUE_URL" | grep -oP 'github\.com/\K[^/]+/[^/]+')
             NUM=$(echo "$MANUAL_ISSUE_URL" | grep -oP '/issues/\K\d+')
+            # Resolve per-project board number
+            export TARGET_REPO="$REPO"
+            KB_INFO=$(./scripts/resolve-kb.sh)
+            PROJ_NUM=$(echo "$KB_INFO" | awk '{print $3}')
             gh api "repos/${REPO}/issues/${NUM}" --jq '{
               issue_id: .node_id, issue_number: .number, title: .title,
               body: (.body // ""), created_at: .created_at, repo: "'"${REPO}"'",
               labels: [.labels[].name], assignees: [.assignees[].login]
             }' > selected-issue.json
+            if [[ -n "$PROJ_NUM" ]]; then
+              jq --argjson pn "$PROJ_NUM" '. + {project_number: $pn}' selected-issue.json > selected-issue.json.tmp && mv selected-issue.json.tmp selected-issue.json
+            fi
           else
             ./scripts/select-issue.sh > selected-issue.json
           fi
