@@ -125,12 +125,12 @@ jq \
     if . == "Bug" then 0 elif . == "Task" then 1 elif . == "Feature" then 2 else 99 end;
 
   map(select(
-      .content != null
+      (.content | type) == "object"
       and .content.number != null
       and .content.state == "OPEN"
       and ((.status // {}).name // "" as $s | $eligible | index($s) != null)
       and ($allowed | length == 0 or (.content.repository.nameWithOwner as $r | $allowed | index($r) != null))
-      and ([.content.labels.nodes[].name] as $labels |
+      and ([(.content.labels.nodes // [])[].name] as $labels |
         ($excluded | all(. as $e | $labels | index($e) == null))
         and ($required | all(. as $r | $labels | index($r) != null))
       )
@@ -154,8 +154,8 @@ jq \
       priority: ((.priority // {}).name // ""),
       size: ((.size // {}).name // ""),
       issue_type: (.content.issueType.name // ""),
-      labels: [.content.labels.nodes[].name],
-      assignees: [.content.assignees.nodes[].login],
+      labels: [(.content.labels.nodes // [])[].name],
+      assignees: [(.content.assignees.nodes // [])[].login],
       project_number: ._project_number
     }]
 ' "$ALL_ITEMS_FILE" > "$CANDIDATES_FILE"

@@ -126,7 +126,7 @@ echo "::notice::Total board items across all projects: ${TOTAL}" >&2
 jq --argjson eligible "$ELIGIBLE_STATUSES" \
    --argjson allowed "$ALLOWED_REPOS" '
   map(select(
-    .content != null
+    (.content | type) == "object"
     and .content.number != null
     and .content.state == "OPEN"
     and ((.status // {}).name // "" as $s | $eligible | index($s) != null)
@@ -144,7 +144,7 @@ jq --argjson eligible "$ELIGIBLE_STATUSES" \
       issue_number: .content.number,
       issue_title: .content.title,
       issue_repo: .content.repository.nameWithOwner,
-      issue_labels: [.content.labels.nodes[].name],
+      issue_labels: [(.content.labels.nodes // [])[].name],
       priority: ((.priority // {}).name // ""),
       created_at: .content.createdAt,
       project_number: ._project_number
