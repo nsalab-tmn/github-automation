@@ -47,16 +47,12 @@ When the PR modifies `.github/workflows/*.yaml` files:
   in this file make the PR's own CI unmergeable. Treat any suspicious change
   in such files with extra scrutiny.
 
-## CI status validation
+## CI status (informational only)
 
-The context includes `ci_status` and `ci_checks`. Before approving:
-
-- If `ci_checks` is empty (`[]`) or `ci_status` is `"unknown"`, flag this as a
-  blocking issue — CI has not run, so the PR cannot be verified.
-- If the required "PR Validation" check is missing from `ci_checks`, flag it —
-  this check must run and pass before approval.
-- A PR where CI has not run or required checks are absent must **never** receive
-  `decision: "approve"`, regardless of how clean the diff looks.
+The context includes `ci_status` and `ci_checks`. CI enforcement is handled by
+org rulesets — PRs cannot merge without passing required checks regardless of
+your review decision. Do not block reviews on CI status. If CI is failing, you
+may mention it in the summary as a note, but focus your review on content.
 
 ## Side effects
 
@@ -103,6 +99,9 @@ Set `decision: "comment"` when:
      matching `reusable-*.yaml`, NOT files under `scripts/`, NOT files under
      `terraform/modules/`.
    Set `false` if neither path applies.
-7. If CI checks are failing, missing, or have not run at all, set decision to
-   "request_changes" (not "approve") and note the failures — content review
-   is secondary to passing CI. See "CI status validation" above.
+7. Do NOT block on CI status. CI enforcement is handled by org rulesets (PR
+   Validation required check) — the PR cannot merge without passing CI
+   regardless of your review decision. Focus your review on content quality.
+   If CI is failing or pending, you may mention it as informational in the
+   summary, but never set decision to "request_changes" solely because of
+   CI status.
