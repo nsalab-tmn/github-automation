@@ -108,8 +108,10 @@ for PROJ_NUM in $PROJECT_NUMBERS; do
 done
 
 # Flatten and filter to only objects (guard against nested arrays and non-issue items)
+echo "::notice::Pre-flatten types: $(jq '[.[] | type] | group_by(.) | map({t: .[0], n: length})' "$ALL_ITEMS_FILE")" >&2
 jq '[flatten[] | select(type == "object")]' "$ALL_ITEMS_FILE" > "${ALL_ITEMS_FILE}.tmp" && mv "${ALL_ITEMS_FILE}.tmp" "$ALL_ITEMS_FILE"
 TOTAL=$(jq 'length' "$ALL_ITEMS_FILE")
+echo "::notice::Post-flatten: ${TOTAL} items, types: $(jq '[.[] | type] | group_by(.) | map({t: .[0], n: length})' "$ALL_ITEMS_FILE")" >&2
 echo "::notice::Total board items across all projects: ${TOTAL}" >&2
 
 # Filter and rank all candidates (output sorted array to file)
