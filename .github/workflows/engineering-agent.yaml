@@ -3,7 +3,7 @@ run-name: "[${{github.run_number}}] Engineering agent [${{github.event_name}}]"
 
 on:
   schedule:
-    - cron: '0 * * * *'  # every hour at :00
+    - cron: '*/5 * * * *'  # every 5 min (troubleshooting — revert to hourly when stable)
   workflow_dispatch:
     inputs:
       issue-url:

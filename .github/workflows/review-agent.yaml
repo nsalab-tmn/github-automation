@@ -3,7 +3,7 @@ run-name: "[${{github.run_number}}] Review agent [${{github.event_name}}]"
 
 on:
   schedule:
-    - cron: '30 * * * *'  # every hour at :30, offset from mechanic at :00
+    - cron: '*/5 * * * *'  # every 5 min (troubleshooting — revert to hourly when stable)
   workflow_dispatch:
     inputs:
       pr-url:
