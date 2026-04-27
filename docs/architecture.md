@@ -295,7 +295,7 @@ Picks issues from the project board backlog and implements them autonomously. Th
  └──────────────────┘      └──────────────────┘       └──────────────────┘
 ```
 
-**Issue selection**: Priority > Size > Type > Age (deterministic, no AI). Scans all project boards defined in the agent config (`projects[].project-number`), filters to only repos listed in `projects[].repos`, then ranks across boards. Paginates through all board items. Currently limited to issues with the `compliance` label (crawl phase, configurable via `require-labels`).
+**Issue selection**: Priority > Size > Type > Age (deterministic, no AI). Scans all project boards defined in the agent config (`projects[].project-number`), filters to only repos listed in `projects[].repos`, then ranks across boards. Paginates through all board items. Currently limited to issues with the `compliance` label (crawl phase, configurable via `require-labels`). Issues with open sub-issues are skipped — a parent issue becomes eligible only after all its child sub-issues are closed.
 
 **State machine** — board columns: Backlog → Blocked → In progress → In review → Done
 
@@ -319,6 +319,14 @@ When the engineering agent marks an issue `not-workable` with blocker type `too_
 3. Planner decomposes the issue into sub-issues and posts a `<!-- agent:decomposition -->` summary comment on the parent
 4. If the planner finds no decomposition is needed (issue is already mechanic-sized), `dispatch-mechanic.sh` re-dispatches the engineering agent to retry
 5. **Loop prevention**: the `<!-- agent:decomposition -->` marker check in step 2 ensures the planner is never dispatched twice for the same issue
+
+**PR branch reuse**: when re-triggered on an issue that already has an open PR (e.g., after beekeeper REQUEST_CHANGES), the mechanic reuses the existing PR branch instead of creating a new one. It fetches the existing branch, resets it to `origin/main`, re-implements the fix on the clean slate, then force-pushes to update the PR. This prevents orphaned branches from accumulating across retry cycles.
+
+**Cross-repo routing**: when `compile-brief.py` returns `cross_repo_dependency` as the blocker type, the mechanic applies one of two routing actions:
+- `transfer` — all work belongs in another repo and nothing needs to change in the current repo; the mechanic moves the issue to the target repo via the GitHub transfer API.
+- `create_blocker` — the current repo's fix depends on another repo being fixed first; the mechanic creates a self-contained blocking issue in the target repo, then marks the original issue as blocked.
+
+`target_repo` (full `owner/name`) is required for both actions. For `create_blocker`, the mechanic also writes a self-contained `blocker_body` so the target-repo mechanic can act without seeing the original issue.
 
 ### Review agent
 
