@@ -1,21 +1,27 @@
 ---
 name: Bug report
-about: A workflow isn't behaving as expected
-labels: bug
+about: Something isn't working as expected
+labels: [bug]
 ---
 
-## Which workflow?
+## Description
 
-<!-- e.g., reusable-auto-assign.yaml -->
+<!-- What is broken? -->
 
-## Called from which repo?
+## Steps to reproduce
 
-<!-- e.g., nsalab-tmn/cheburnet-vpn -->
+1.
+2.
+3.
 
 ## Expected behavior
 
-<!-- What should have happened? -->
+<!-- What should happen? -->
 
 ## Actual behavior
 
-<!-- What happened instead? Include workflow run link if possible. -->
+<!-- What happens instead? -->
+
+## Environment
+
+<!-- Relevant versions, OS, configuration, etc. -->

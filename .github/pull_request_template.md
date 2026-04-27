@@ -2,23 +2,18 @@
 
 <!-- What changed and why -->
 
-## Type of change
+## Changes
 
-- [ ] New workflow
-- [ ] Workflow modification
-- [ ] Bug fix
-- [ ] Documentation
+<!-- List the key changes made -->
+
+-
 
 ## Test plan
 
-<!-- How was this tested? Which repo was used as a caller? -->
+<!-- How was this tested? -->
 
-- [ ] Tested from repo: `nsalab-tmn/___`
-- [ ] Event type tested: ___
-- [ ] Verified idempotent (ran twice, no duplicate effects)
+- [ ]
 
-## Checklist
+## Linked issue
 
-- [ ] `docs/conventions.md` updated (if adding/changing a workflow)
-- [ ] README workflows table updated (if adding a new workflow)
-- [ ] Linked to issue
+Closes #
