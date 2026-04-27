@@ -359,7 +359,7 @@ Elapsed wait time is recorded as `ci_wait_seconds` and surfaced in the workflow 
 - `request_changes` — blocking issues found (wrong fix, errors, convention violations)
 - `comment` — low confidence, escalate to human judgment
 
-**On REQUEST_CHANGES**: posts review feedback on the linked issue (for engineering agent context), directly updates board status to "In progress" (bot events don't trigger project-sync). Engineering agent picks it up on next run.
+**On REQUEST_CHANGES**: posts review feedback on the linked issue (for engineering agent context), directly updates board status to "In progress" (bot events don't trigger project-sync), then dispatches `engineering-agent` immediately via `gh workflow run` (`post-review.sh`).
 
 **Separate identities**: the review agent (`nsalab-beekeeper[bot]`) can properly APPROVE PRs created by the engineering agent (`nsalab-mechanic[bot]`) since they are different GitHub App identities.
 
@@ -378,6 +378,47 @@ When all four conditions hold — `decision=approve`, `confidence=high`, `auto_m
 **Telegram notification**: `notify-telegram.sh` distinguishes between "✅ PR auto-merged" (when `AUTO_MERGED=true`) and "PR approved — ready to merge" (when approved but not auto-merged).
 
 **Kill switch**: set `auto-merge: false` in `config/review-agent.yaml` to disable globally.
+
+### Agent dispatch chain
+
+All inter-agent dispatches use `gh workflow run` targeting `nsalab-tmn/github-automation`. The full trigger graph:
+
+| Source | Condition | Dispatches | How |
+|---|---|---|---|
+| Schedule `:00` / manual `workflow_dispatch` | — | `engineering-agent` | Direct trigger |
+| `engineering-agent` | PR created or updated | `review-agent` | Inline `gh workflow run` |
+| `review-agent` | `REQUEST_CHANGES` decision | `engineering-agent` | `post-review.sh` |
+| `engineering-agent` | `not-workable`, blocker `too_complex`, no decomposition marker | `planning-agent` | `dispatch-planner.sh` |
+| `planning-agent` | `needs_decomposition=false` | `engineering-agent` | `dispatch-mechanic.sh` |
+
+See the **Escalation chain** subsection under Engineering agent for the loop-prevention logic that governs the mechanic ↔ planner sub-chain.
+
+**Pinned issue exclusion**: a former `mechanic-dispatch` job dispatched `engineering-agent` on `issues.opened`, skipping issues with the `pinned` label to prevent the chain from processing pinned context issues. That job was removed (PR #366) — auto-dispatch on every `issues.opened` caused unwanted runs on manually created issues. The mechanic now runs exclusively on schedule; the `compliance` label requirement (`require-labels` in `config/engineering-agent.yaml`) prevents pinned context issues (which lack the `compliance` label) from being selected.
+
+### Concurrency model
+
+Each agent workflow declares a `concurrency` group with `cancel-in-progress: false`:
+
+```yaml
+# engineering-agent.yaml
+concurrency:
+  group: engineering-agent-${{ github.event_name }}
+  cancel-in-progress: false
+```
+
+`cancel-in-progress: false` means a new run queues behind the active run rather than cancelling it. GitHub enforces a hard limit of **1 running + 1 pending** per concurrency group — any additional queued runs are cancelled immediately.
+
+| Workflow | Concurrency group | Schedule |
+|---|---|---|
+| `engineering-agent` | `engineering-agent-<event>` | Hourly `:00` + manual |
+| `review-agent` | `review-agent-<event>` | Hourly `:30` + manual |
+| `planning-agent` | `planning-agent` | Manual / inter-agent dispatch only |
+
+The `${{ github.event_name }}` suffix keeps `schedule` and `workflow_dispatch` runs in separate concurrency slots — a manual dispatch does not consume the pending slot for the next hourly run.
+
+The `:00` / `:30` offset is intentional: the mechanic runs first and creates PRs, then the beekeeper runs 30 minutes later to review them, without explicit coordination.
+
+**Batch dispatch cancellation**: if multiple `workflow_dispatch` runs are queued simultaneously for the same concurrency group (e.g., inter-agent dispatches in rapid succession), GitHub cancels all but 1 running + 1 pending. The hourly schedule is the primary processing loop; bulk dispatch is not needed.
 
 ### Feedback loop
 
