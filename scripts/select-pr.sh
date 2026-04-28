@@ -132,7 +132,7 @@ jq --argjson eligible "$ELIGIBLE_STATUSES" \
   [.[] | select(type == "object" and (.content | type) == "object" and .content.number != null and .content.state == "OPEN")]
   | map(select(
     ((.status // {}).name // "" as $s | $eligible | index($s) != null)
-    and ($allowed | length == 0 or (.content.repository.nameWithOwner as $r | $allowed | index($r) != null))
+    and (($allowed | length) == 0 or (.content.repository.nameWithOwner as $r | $allowed | index($r) != null))
   ))
   | sort_by([
     (if (.priority // {}).name == "P1" then 0
