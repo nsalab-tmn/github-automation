@@ -129,11 +129,9 @@ echo "::notice::Total board items across all projects: ${TOTAL}" >&2
 # Filter to issues in eligible statuses (these are the issues linked to PRs)
 jq --argjson eligible "$ELIGIBLE_STATUSES" \
    --argjson allowed "$ALLOWED_REPOS" '
-  map(select(
-    (.content | type) == "object"
-    and .content.number != null
-    and .content.state == "OPEN"
-    and ((.status // {}).name // "" as $s | $eligible | index($s) != null)
+  [.[] | select(type == "object" and (.content | type) == "object" and .content.number != null and .content.state == "OPEN")]
+  | map(select(
+    ((.status // {}).name // "" as $s | $eligible | index($s) != null)
     and ($allowed | length == 0 or (.content.repository.nameWithOwner as $r | $allowed | index($r) != null))
   ))
   | sort_by([

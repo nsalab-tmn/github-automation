@@ -128,11 +128,9 @@ jq \
   def type_rank:
     if . == "Bug" then 0 elif . == "Task" then 1 elif . == "Feature" then 2 else 99 end;
 
-  map(select(
-      (.content | type) == "object"
-      and .content.number != null
-      and .content.state == "OPEN"
-      and ((.status // {}).name // "" as $s | $eligible | index($s) != null)
+  [.[] | select(type == "object" and (.content | type) == "object" and .content.number != null and .content.state == "OPEN")]
+  | map(select(
+      ((.status // {}).name // "" as $s | $eligible | index($s) != null)
       and ($allowed | length == 0 or (.content.repository.nameWithOwner as $r | $allowed | index($r) != null))
       and ([(.content.labels.nodes // [])[].name] as $labels |
         ($excluded | all(. as $e | $labels | index($e) == null))
