@@ -2,8 +2,6 @@ name: drift-detect
 run-name: "[${{github.run_number}}] Drift detect [${{github.event_name}}]"
 
 on:
-  schedule:
-    - cron: '0 10 * * 1'  # Monday 10am UTC
   workflow_dispatch:
     inputs:
       dry-run:
